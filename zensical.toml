@@ -1,16 +1,16 @@
 [project]
-site_url = "https://leejianrong2.github.io/agent-auth-lab/"
+site_url = "https://leejianrong.github.io/agent-auth-lab/"
 site_name = "Agent Auth Lab"
-site_description = "A hands-on course on authentication and authorization — from sessions and JWTs to authn/authz for autonomous agents."
+site_description = "A hands-on course on authentication and authorization, from sessions and JWTs to authn/authz for autonomous agents."
 docs_dir = "docs/course"
 
-repo_url = "https://github.com/leejianrong2/agent-auth-lab"
-repo_name = "leejianrong2/agent-auth-lab"
+repo_url = "https://github.com/leejianrong/agent-auth-lab"
+repo_name = "leejianrong/agent-auth-lab"
 edit_uri = "edit/main/docs/course/"
 
 nav = [
   { "Course" = "index.md" },
-  { "Lab 00 — Sessions & Cookies" = "lab-00-sessions-cookies.md" },
+  { "Lab 00: sessions & cookies" = "lab-00-sessions-cookies.md" },
 ]
 
 [project.theme]
@@ -53,7 +53,7 @@ toggle.name = "Switch to system preference"
 
 [[project.extra.social]]
 icon = "fontawesome/brands/github"
-link = "https://github.com/leejianrong2/agent-auth-lab"
+link = "https://github.com/leejianrong/agent-auth-lab"
 
 [project.markdown_extensions]
 abbr = {}
