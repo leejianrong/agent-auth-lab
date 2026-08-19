@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs-build:
+    name: Docs site builds cleanly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install zensical
+      - run: zensical build --clean --strict
+
+  generator-check:
+    name: Starter packs match their solutions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check every lab's starter is generated from its solution
+        run: |
+          set -e
+          for lab in labs/*/; do
+            echo "checking ${lab%/}"
+            python3 scripts/generate_starter.py --check "${lab%/}"
+          done
+
+  backend-solution-tests:
+    name: Backend solution self-checks (must all pass)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lab:
+          - lab-00-sessions-cookies
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: labs/${{ matrix.lab }}/solution/backend
+        run: pip install -r requirements.txt
+      - name: pytest
+        working-directory: labs/${{ matrix.lab }}/solution/backend
+        run: pytest tests/ -v
+
+  backend-starter-smoke:
+    name: Backend starters import cleanly (behavior is intentionally incomplete)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lab:
+          - lab-00-sessions-cookies
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: labs/${{ matrix.lab }}/starter/backend
+        run: pip install -r requirements.txt
+      - name: Import smoke test
+        working-directory: labs/${{ matrix.lab }}/starter/backend
+        run: python -c "from app.main import app"
+
+  frontend:
+    name: Frontend type-check and build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lab:
+          - lab-00-sessions-cookies
+        variant: [solution, starter]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install
+        working-directory: labs/${{ matrix.lab }}/${{ matrix.variant }}/frontend
+        run: npm install
+      - name: Type-check
+        working-directory: labs/${{ matrix.lab }}/${{ matrix.variant }}/frontend
+        run: npm run check
+      - name: Build
+        working-directory: labs/${{ matrix.lab }}/${{ matrix.variant }}/frontend
+        run: npm run build

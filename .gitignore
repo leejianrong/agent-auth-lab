@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# Runtime databases (generated at run time, not checked in)
+*.db
+*.db-journal
+
+# Node / frontend
+node_modules/
+dist/
+.svelte-kit/
+
+# Zensical docs build
+site/
+.cache/
+
+# Editors / OS
+.DS_Store

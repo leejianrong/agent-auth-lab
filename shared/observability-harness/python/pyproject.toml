@@ -1,0 +1,15 @@
+[project]
+name = "observability-harness"
+version = "0.1.0"
+description = "Shared audit-log + trace-ID + dashboard harness for Agent Auth Lab"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["observability_harness"]
