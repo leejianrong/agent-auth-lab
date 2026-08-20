@@ -4,8 +4,8 @@ icon: lucide/shield-check
 
 # Lab 02: RBAC
 
-You'll give every user a role and build the mechanism that actually checks
-it: a dependency that gates a route to callers whose role is on an
+You'll give every user a role and build role-based access control, RBAC
+for short: a dependency that gates a route to callers whose role is on an
 allow-list, denying everyone else with a 403 and an audit entry that names
 exactly what went wrong. By the end, your backend has a role-gated admin
 panel, and you've watched a real privilege-escalation bug let a plain user
@@ -27,15 +27,23 @@ through it before you fix it.
 Lab 01 started you off with `verify_token` reading a JWT's claims but
 never checking whether the signature was genuine. The fix calls
 `jwt.decode` with the real secret and lets PyJWT do the cryptographic
-work, but the finished version has one more wrinkle than the handout let
-on at the time: PyJWT's own expiry check runs during that same call, and
-it can raise for a malformed `exp` claim just as easily as for a forged
-signature. Left unhandled, that turns a bad `exp` into a false "invalid
-signature" report, which is exactly the kind of failure this lab exists to
-catch you making. Here's the full fixed function:
+work. Lab 01's own handout already covers the full mechanics of the
+finished version, including a wrinkle worth reinforcing here since it's
+the whole reason the function is shaped the way it is: PyJWT's own expiry
+check runs inside that same verifying call, and it can raise for a
+malformed `exp` claim just as easily as for a forged signature. Letting
+that exception fall into the same "bad signature" handling would
+misreport a malformed `exp` as a forged token, exactly the conflation lab
+01 taught you to keep separate. Here's the full fixed function:
 
 ```python title="solution/backend/app/security.py"
 def verify_token(token: str) -> TokenVerification:
+    """Check a JWT for real: signature, expiry, and required claims.
+
+    Decoding the payload is always possible without the secret — that part
+    of a JWT is base64url, not encrypted. Proving the token wasn't tampered
+    with, and hasn't expired, needs the actual signature check below.
+    """
     try:
         unverified_claims = jwt.decode(token, options={"verify_signature": False})
     except jwt.InvalidTokenError:
@@ -51,6 +59,13 @@ def verify_token(token: str) -> TokenVerification:
     expired = exp_well_formed and claimed_exp < now
 
     try:
+        # verify_exp is turned off deliberately: this call's only job is
+        # checking the signature. PyJWT's own exp handling (left on) would
+        # try to int() a malformed exp claim and raise DecodeError — a
+        # subclass of InvalidTokenError indistinguishable, in the except
+        # branch below, from an actually-forged signature. A malformed exp
+        # is a real, distinct problem (handled right below), but it isn't a
+        # signature problem, and this function must not conflate the two.
         jwt.decode(
             token, JWT_SECRET, algorithms=[JWT_ALGORITHM],
             options={"verify_exp": False},
@@ -115,8 +130,10 @@ flowchart TD
 Notice the signature check comes first and stands entirely on its own.
 Everything below it, expired, malformed, missing, is a judgment this
 function makes itself once it already knows the token is genuine. That
-separation of concerns is the whole lesson lab 01 was teaching, just with
-one more failure mode than the handout originally called out.
+separation of concerns, one check per failure mode, no exception handler
+doing double duty, is exactly what lab 01's background section spelled
+out. Seeing it play out in the finished function is confirmation the
+lesson landed, not a correction to it.
 
 ### Discussing lab 01's going further questions
 
@@ -287,7 +304,7 @@ def role_is_authorized(role: str, allowed_roles: tuple[str, ...]) -> bool:
     return bool(role)
 ```
 
-!!! danger "Intentionally vulnerable code — localhost teaching only"
+!!! danger "Intentionally vulnerable code: localhost teaching only"
     The code above is this lab's seeded privilege-escalation bug, the
     kind ADR-0008 governs for this course: labeled at the point of
     vulnerability, never wired to anything beyond your own machine, and
@@ -306,10 +323,14 @@ calls this function and writes the audit log entry, needs to change; the
 whole bug and the whole fix live in this one function.
 
 !!! warning "A role existing and a role matching are different questions"
-    You'll still want to handle the case of no role at all cleanly (an
-    empty string shouldn't satisfy any allow-list), but don't let that
-    correct handling of the edge case stand in for checking the actual
-    role you were given against the roles the route accepts.
+    A genuine membership check already covers the no-role case on its
+    own, with nothing extra to write: an empty string is never a member
+    of a non-empty allow-list tuple, so it's correctly denied by the same
+    comparison that denies any other role that isn't on the list. The
+    trap isn't a missing edge case, it's writing a check that only asks
+    whether `role` exists at all, a different and much weaker question
+    than asking whether it's one of the roles this specific route
+    accepts.
 
 ### Run it and watch it work
 
