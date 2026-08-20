@@ -193,7 +193,9 @@ flowchart TD
     C -->|no| D[reject: not well-formed]
     C -->|yes| E[Check signature against JWT_SECRET]
     E -->|invalid| F[reject: invalid signature]
-    E -->|valid| G{exp already in the past?}
+    E -->|valid| L{exp present but not a number?}
+    L -->|yes| M[reject: malformed exp claim]
+    L -->|no| G{exp already in the past?}
     G -->|yes| H[reject: token expired]
     G -->|no| I{sub and exp both present?}
     I -->|no| J[reject: missing required claim]
@@ -204,10 +206,19 @@ The order matters. A signature check has to run before you trust anything
 else about the token, including whether it's expired, because a forged
 token can claim any `exp` it likes. This lab's self-check suite exercises
 each rejection path separately and expects a distinct reason string for
-each: `"invalid signature"`, `"token expired"`, and
-`"missing required claim: <name>"`. A verify function that collapses these
-into one generic "invalid token" makes debugging (and this handout's
+each: `"invalid signature"`, `"malformed exp claim"`, `"token expired"`,
+and `"missing required claim: <name>"`. A verify function that collapses
+these into one generic "invalid token" makes debugging (and this handout's
 audit-log tests) much harder than it needs to be.
+
+Watch out for a subtler trap in that ordering: a token can be genuinely
+signed with the real secret and still carry an `exp` that isn't a number
+at all (a hand-edited payload with `"exp": "soon"`, say). PyJWT's own
+built-in expiry check tries to convert `exp` to an integer during
+verification and raises an error if it can't — an error that looks
+exactly like a signature failure to code that isn't careful about it. A
+malformed `exp` is a real problem, but it isn't a signature problem, and
+reporting it as `"invalid signature"` would blame the wrong thing.
 
 ## Prerequisites
 
@@ -258,7 +269,14 @@ def verify_token(token: str) -> TokenVerification:
 
     now = time.time()
     claimed_exp = claims.get("exp")
-    expired = isinstance(claimed_exp, (int, float)) and claimed_exp < now
+    exp_present = "exp" in claims
+    exp_well_formed = isinstance(claimed_exp, (int, float))
+    expired = exp_well_formed and claimed_exp < now
+    if exp_present and not exp_well_formed:
+        return TokenVerification(
+            valid=False, signature_valid=True, expired=False, claims=claims,
+            reason="malformed exp claim",
+        )
     if expired:
         return TokenVerification(
             valid=False, signature_valid=True, expired=True, claims=claims,
@@ -282,16 +300,25 @@ re-signed with a wrong key (or not signed at all) sails through unless it
 also happens to be expired or missing a claim.
 
 Fix `verify_token` so it actually verifies the signature: call
-`jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])` (no
-`verify_signature` override) and let PyJWT do the cryptographic check.
-That call raises `jwt.InvalidTokenError` (or one of its subclasses,
-including `jwt.ExpiredSignatureError` specifically for an expired-but-
-otherwise-valid token) when something's wrong, so you'll need to catch the
-right exceptions and translate each into the matching
-`TokenVerification` your `/verify` endpoint and self-check suite expect:
-`signature_valid=False` with reason `"invalid signature"` for a bad
-signature, and the existing expiry/missing-claim logic still applying once
-you know the signature genuinely checked out.
+`jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])` and let PyJWT
+do the cryptographic check, instead of the `verify_signature=False`
+override above. That call raises `jwt.InvalidTokenError` (or one of its
+subclasses) when the signature doesn't check out, so you'll need to catch
+it and translate it into `signature_valid=False` with reason
+`"invalid signature"`.
+
+One thing to get right on the way there: that verifying call also runs
+PyJWT's own built-in expiry check by default, which means it can raise for
+a malformed `exp` claim too, not just a bad signature — and if you let
+that exception fall into the same "bad signature" handling, you'll
+misreport a malformed `exp` as a forged token. Keep the signature check
+and the exp-shape check as two separate concerns: tell `jwt.decode` not to
+do its own expiry validation on this call (there's an `options` argument
+for that), and rely on the unverified-claims read you already have above
+to decide, on your own terms, whether `exp` is present, whether it's
+actually a number, and whether it's in the past — the existing
+expiry/missing-claim logic keeps applying once you know the signature
+genuinely checked out.
 
 !!! warning "Peeking at claims and verifying them are different operations"
     You can (and should) still decode the payload without verification
@@ -336,6 +363,10 @@ Run the self-check suite from `starter/backend`:
       the past is rejected with reason `"token expired"`
 - [ ] `test_verify_rejects_missing_required_claim` passes: a token missing
       `sub` is rejected with reason naming the missing claim
+- [ ] `test_verify_reports_malformed_exp_as_its_own_reason_not_bad_signature`
+      passes: a genuinely-signed token with a non-numeric `exp` is reported
+      as `signature_valid=True` with reason `"malformed exp claim"`, not
+      blamed on the signature
 - [ ] `test_verify_denials_produce_distinct_audit_reasons` passes: all
       three denial reasons show up as separate audit log entries
 - [ ] `test_verify_unit_level_distinct_errors` passes: calling

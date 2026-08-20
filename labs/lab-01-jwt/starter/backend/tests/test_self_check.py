@@ -207,6 +207,29 @@ def test_verify_rejects_missing_required_claim(client, new_username):
     assert body["reason"] == "missing required claim: sub"
 
 
+def test_verify_reports_malformed_exp_as_its_own_reason_not_bad_signature():
+    """Regression test: a token can be genuinely signed with the real
+    secret and still carry a malformed (non-numeric) `exp` claim. That used
+    to get misreported as `signature_valid=False, reason="invalid
+    signature"` — a real bug, since the signature was never the problem.
+    PyJWT's own exp handling tries to int() the claim during the verifying
+    decode() call and raises DecodeError (an InvalidTokenError subclass),
+    which a signature check that doesn't disable verify_exp can't tell
+    apart from an actually-forged signature. A malformed exp must be
+    reported as its own distinct, honest failure reason instead.
+
+    Calls `verify_token()` directly (not through `/verify`) so this doesn't
+    add an extra audit event that `test_verify_denials_produce_distinct_audit_reasons`
+    above would otherwise pick up via `audit_log.recent()`.
+    """
+    token_with_bad_exp = _make_token({"sub": "alice", "exp": "soon"})
+
+    result = security.verify_token(token_with_bad_exp)
+    assert result.valid is False
+    assert result.signature_valid is True, "the signature itself was genuine"
+    assert result.reason == "malformed exp claim"
+
+
 def test_verify_denials_produce_distinct_audit_reasons(client, new_username):
     from app.main import audit_log
 
