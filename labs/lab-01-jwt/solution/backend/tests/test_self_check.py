@@ -207,6 +207,25 @@ def test_verify_rejects_missing_required_claim(client, new_username):
     assert body["reason"] == "missing required claim: sub"
 
 
+def test_verify_rejects_malformed_token():
+    """A garbage, non-JWT-shaped string isn't a signature problem or an
+    expiry problem — it fails before either check gets a chance to run, at
+    the initial unverified decode. This path isn't sentinel-gated (it's
+    shared, unconditional code in both starter and solution), so it must
+    pass regardless of whether the lab's own signature-verification task
+    is finished yet.
+
+    Calls `verify_token()` directly, same as the malformed-exp regression
+    test below, so this doesn't add a fourth audit reason that
+    `test_verify_denials_produce_distinct_audit_reasons` would otherwise
+    pick up via `audit_log.recent()` and mistake for a new failure mode.
+    """
+    result = security.verify_token("this-is-not-a-jwt-at-all")
+    assert result.valid is False
+    assert result.signature_valid is False
+    assert result.reason == "token is not well-formed"
+
+
 def test_verify_reports_malformed_exp_as_its_own_reason_not_bad_signature():
     """Regression test: a token can be genuinely signed with the real
     secret and still carry a malformed (non-numeric) `exp` claim. That used
