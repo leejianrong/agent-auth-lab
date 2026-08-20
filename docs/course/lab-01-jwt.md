@@ -215,10 +215,10 @@ Watch out for a subtler trap in that ordering: a token can be genuinely
 signed with the real secret and still carry an `exp` that isn't a number
 at all (a hand-edited payload with `"exp": "soon"`, say). PyJWT's own
 built-in expiry check tries to convert `exp` to an integer during
-verification and raises an error if it can't — an error that looks
-exactly like a signature failure to code that isn't careful about it. A
-malformed `exp` is a real problem, but it isn't a signature problem, and
-reporting it as `"invalid signature"` would blame the wrong thing.
+verification, and it raises an error if it can't, one that looks exactly
+like a signature failure to code that isn't careful about it. A malformed
+`exp` is a real problem, but it isn't a signature problem, and reporting
+it as `"invalid signature"` would blame the wrong thing.
 
 ## Prerequisites
 
@@ -243,88 +243,65 @@ npm install
 
 ## Your tasks
 
-Open `starter/backend/app/security.py` and find `verify_token`, marked
-with a `TODO(lab-01)` comment:
+Open `starter/backend/app/security.py` and find `verify_token`. The top of
+the function already handles a token that isn't even shaped like a JWT
+(decode failure on `jwt.decode(token, options={"verify_signature": False})`
+gets reported as `"token is not well-formed"`), and it already works out
+whether `exp` is present and whether it's actually a number. Keep scrolling
+past that and you'll find the part marked with a `TODO(lab-01)` comment:
 
 ```python title="starter/backend/app/security.py"
-def verify_token(token: str) -> TokenVerification:
-    """Check a JWT for real: signature, expiry, and required claims.
-
-    Decoding the payload is always possible without the secret — that part
-    of a JWT is base64url, not encrypted. Proving the token wasn't tampered
-    with, and hasn't expired, needs the actual signature check below.
-    """
-    # TODO(lab-01): this reads the claims out of the token but never checks
-    # whether the signature is genuine — jwt.decode() below is called with
-    # verify_signature=False, so it happily accepts a token whose payload
-    # was hand-edited and re-encoded, as long as the JSON is well-formed. A
-    # JWT's payload is base64url, not encrypted: readable by anyone, proven
-    # authentic by no one, until the signature is actually checked against
-    # the key that issued it. Verify the signature for real instead of
-    # skipping it — decode with the secret and `algorithms=[JWT_ALGORITHM]`,
-    # no `verify_signature` override — and handle the distinct failure
-    # cases (bad signature, expired, missing claim) it can raise. See
-    # "Signed, Not Encrypted" in the lab 01 handout.
-    claims = jwt.decode(token, options={"verify_signature": False})
-
-    now = time.time()
-    claimed_exp = claims.get("exp")
-    exp_present = "exp" in claims
-    exp_well_formed = isinstance(claimed_exp, (int, float))
-    expired = exp_well_formed and claimed_exp < now
-    if exp_present and not exp_well_formed:
-        return TokenVerification(
-            valid=False, signature_valid=True, expired=False, claims=claims,
-            reason="malformed exp claim",
-        )
-    if expired:
-        return TokenVerification(
-            valid=False, signature_valid=True, expired=True, claims=claims,
-            reason="token expired",
-        )
-
-    missing = [claim for claim in REQUIRED_CLAIMS if claim not in claims]
-    if missing:
-        return TokenVerification(
-            valid=False, signature_valid=True, expired=False, claims=claims,
-            reason=f"missing required claim: {missing[0]}",
-        )
-
-    return TokenVerification(valid=True, signature_valid=True, expired=False, claims=claims)
+    # TODO(lab-01): this trusts the token completely once it's decodable —
+    # signature_valid is hardcoded True below, so nothing here actually
+    # checks whether the signature is genuine. A token whose payload was
+    # hand-edited and re-signed with a wrong key (or not signed at all)
+    # sails through as long as its claims otherwise look fine. Verify the
+    # signature for real instead: call
+    # `jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])` and let
+    # PyJWT do the cryptographic check, then translate a failure into
+    # `signature_valid=False` with reason "invalid signature".
+    #
+    # One thing to watch for on the way there: that verifying call also
+    # runs PyJWT's own expiry check by default, and a malformed
+    # (non-numeric) exp claim can make it raise too — indistinguishable, if
+    # you're not careful, from an actually-forged signature. Tell
+    # `jwt.decode` not to do its own expiry validation here (there's an
+    # `options` argument for that) and keep relying on `exp_present` /
+    # `exp_well_formed` / `expired` above, computed from the unverified
+    # claims, to decide the rest. See "Signed, not encrypted" in the lab 01
+    # handout.
+    signature_valid = True
 ```
 
-Notice this already gets expiry and missing-claim checking right. It's
-`signature_valid=True` that's the lie: nothing above it ever checked a
-signature against anything, so a token whose payload was hand-edited and
-re-signed with a wrong key (or not signed at all) sails through unless it
-also happens to be expired or missing a claim.
+That single hardcoded line is the whole gap. Everything below it (the
+`if not signature_valid`, the malformed-`exp` check, the expiry check, the
+missing-claim check) is already correct and already reads from the claims
+this function decoded at the top without checking anything against a
+secret, which is exactly why `signature_valid=True` never being earned is
+a problem: a token whose payload was hand-edited and re-signed with a
+wrong key (or not signed at all) sails through every one of those checks
+unless it also happens to be expired or missing a claim.
 
-Fix `verify_token` so it actually verifies the signature: call
+Fix it by actually verifying the signature: call
 `jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])` and let PyJWT
-do the cryptographic check, instead of the `verify_signature=False`
-override above. That call raises `jwt.InvalidTokenError` (or one of its
+do the cryptographic check, instead of assigning `signature_valid = True`
+outright. That call raises `jwt.InvalidTokenError` (or one of its
 subclasses) when the signature doesn't check out, so you'll need to catch
-it and translate it into `signature_valid=False` with reason
-`"invalid signature"`.
+it and set `signature_valid` from whether the call succeeded.
 
-One thing to get right on the way there: that verifying call also runs
-PyJWT's own built-in expiry check by default, which means it can raise for
-a malformed `exp` claim too, not just a bad signature — and if you let
-that exception fall into the same "bad signature" handling, you'll
-misreport a malformed `exp` as a forged token. Keep the signature check
-and the exp-shape check as two separate concerns: tell `jwt.decode` not to
-do its own expiry validation on this call (there's an `options` argument
-for that), and rely on the unverified-claims read you already have above
-to decide, on your own terms, whether `exp` is present, whether it's
-actually a number, and whether it's in the past — the existing
-expiry/missing-claim logic keeps applying once you know the signature
-genuinely checked out.
+The comment above already flags the one trap in this: the verifying call
+runs PyJWT's own built-in expiry check by default, so it can raise for a
+malformed `exp` claim too, not only a forged signature. Tell `jwt.decode`
+not to do its own expiry validation on this call (there's an `options`
+argument for that) and let the `exp_present` / `exp_well_formed` /
+`expired` values computed further up the function keep deciding the rest,
+the same way they already do once you know the signature genuinely
+checked out.
 
 !!! warning "Peeking at claims and verifying them are different operations"
-    You can (and should) still decode the payload without verification
-    first, exactly like the starter does, if you want to read `exp` or the
-    other claims before you know whether to trust them. Just don't let
-    that unverified read stand in for the real signature check.
+    The unverified read at the top of the function (the one that produces
+    `unverified_claims`) is always possible without the secret. Don't let
+    it stand in for the real signature check you're adding below it.
 
 ### Run it and watch it work
 
@@ -340,7 +317,8 @@ cd labs/lab-01-jwt/starter/frontend
 npm run dev
 ```
 
-Log in, then scroll to the "Live JWT decoder" panel. Click "Get a fresh
+Sign up (or log in, if you already have an account from an earlier run),
+then scroll to the "Live JWT decoder" panel. Click "Get a fresh
 token for my session": the claims decode instantly, client-side, no
 network call involved. Click "Verify signature & expiry with server," and
 you'll see a second, separate result that only the backend could produce.
@@ -407,7 +385,7 @@ No self-check for these. Lab 02's handout opens with a discussion of them.
 ## Further reading
 
 - [RFC 7519: JSON Web Token (JWT)](https://datatracker.ietf.org/doc/html/rfc7519)
-- [jwt.io debugger](https://jwt.io/) — the same decode-without-a-secret
+- [jwt.io debugger](https://jwt.io/), the same decode-without-a-secret
   trick this lab's UI panel does, from the library that popularized it
-- [OWASP JSON Web Token Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html)
+- [OWASP JSON Web Token Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet.html)
 - [PyJWT documentation](https://pyjwt.readthedocs.io/)

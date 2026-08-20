@@ -80,7 +80,6 @@ def verify_token(token: str) -> TokenVerification:
     of a JWT is base64url, not encrypted. Proving the token wasn't tampered
     with, and hasn't expired, needs the actual signature check below.
     """
-    # LAB:SOLUTION >>>
     try:
         unverified_claims = jwt.decode(token, options={"verify_signature": False})
     except jwt.InvalidTokenError:
@@ -95,6 +94,7 @@ def verify_token(token: str) -> TokenVerification:
     exp_well_formed = isinstance(claimed_exp, (int, float))
     expired = exp_well_formed and claimed_exp < now
 
+    # LAB:SOLUTION >>>
     try:
         # verify_exp is turned off deliberately: this call's only job is
         # checking the signature. PyJWT's own exp handling (left on) would
@@ -139,41 +139,51 @@ def verify_token(token: str) -> TokenVerification:
     return TokenVerification(valid=True, signature_valid=True, expired=False, claims=unverified_claims)
     # LAB:SOLUTION <<<
     # LAB:STARTER >>>
-    # TODO(lab-01): this reads the claims out of the token but never checks
-    # whether the signature is genuine — jwt.decode() below is called with
-    # verify_signature=False, so it happily accepts a token whose payload
-    # was hand-edited and re-encoded, as long as the JSON is well-formed. A
-    # JWT's payload is base64url, not encrypted: readable by anyone, proven
-    # authentic by no one, until the signature is actually checked against
-    # the key that issued it. Verify the signature for real instead of
-    # skipping it — decode with the secret and `algorithms=[JWT_ALGORITHM]`,
-    # no `verify_signature` override — and handle the distinct failure
-    # cases (bad signature, expired, missing claim) it can raise. See
-    # "Signed, Not Encrypted" in the lab 01 handout.
-    claims = jwt.decode(token, options={"verify_signature": False})
+    # TODO(lab-01): this trusts the token completely once it's decodable —
+    # signature_valid is hardcoded True below, so nothing here actually
+    # checks whether the signature is genuine. A token whose payload was
+    # hand-edited and re-signed with a wrong key (or not signed at all)
+    # sails through as long as its claims otherwise look fine. Verify the
+    # signature for real instead: call
+    # `jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])` and let
+    # PyJWT do the cryptographic check, then translate a failure into
+    # `signature_valid=False` with reason "invalid signature".
+    #
+    # One thing to watch for on the way there: that verifying call also
+    # runs PyJWT's own expiry check by default, and a malformed
+    # (non-numeric) exp claim can make it raise too — indistinguishable, if
+    # you're not careful, from an actually-forged signature. Tell
+    # `jwt.decode` not to do its own expiry validation here (there's an
+    # `options` argument for that) and keep relying on `exp_present` /
+    # `exp_well_formed` / `expired` above, computed from the unverified
+    # claims, to decide the rest. See "Signed, not encrypted" in the lab 01
+    # handout.
+    signature_valid = True
 
-    now = time.time()
-    claimed_exp = claims.get("exp")
-    exp_present = "exp" in claims
-    exp_well_formed = isinstance(claimed_exp, (int, float))
-    expired = exp_well_formed and claimed_exp < now
+    if not signature_valid:
+        return TokenVerification(
+            valid=False, signature_valid=False, expired=expired,
+            claims=unverified_claims, reason="invalid signature",
+        )
+
     if exp_present and not exp_well_formed:
         return TokenVerification(
-            valid=False, signature_valid=True, expired=False, claims=claims,
+            valid=False, signature_valid=True, expired=False, claims=unverified_claims,
             reason="malformed exp claim",
         )
+
     if expired:
         return TokenVerification(
-            valid=False, signature_valid=True, expired=True, claims=claims,
+            valid=False, signature_valid=True, expired=True, claims=unverified_claims,
             reason="token expired",
         )
 
-    missing = [claim for claim in REQUIRED_CLAIMS if claim not in claims]
+    missing = [claim for claim in REQUIRED_CLAIMS if claim not in unverified_claims]
     if missing:
         return TokenVerification(
-            valid=False, signature_valid=True, expired=False, claims=claims,
+            valid=False, signature_valid=True, expired=False, claims=unverified_claims,
             reason=f"missing required claim: {missing[0]}",
         )
 
-    return TokenVerification(valid=True, signature_valid=True, expired=False, claims=claims)
+    return TokenVerification(valid=True, signature_valid=True, expired=False, claims=unverified_claims)
     # LAB:STARTER <<<
