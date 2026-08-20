@@ -87,11 +87,41 @@ exactly what a diagram should replace.
   better.
 - **Screenshots of the running app** are used where they'd clarify an
   observable outcome (what a panel looks like, what a denied request shows
-  in the UI). This repo has no browser-automation tooling to capture one,
-  so either describe precisely what to look for in prose, or name the
-  specific graphic wanted (what it should show, roughly what it should look
-  like) so it can be generated or supplied separately. Never leave the spot
-  as a bare placeholder.
+  in the UI). Capture these with Playwright, confirmed working in this
+  environment (Chromium is already cached). Steps:
+
+  1. Start the lab's starter (or solution) backend and frontend, each on a
+     port you've confirmed is actually free:
+     `ss -ltn | grep :<port>` before binding. This sandbox runs unrelated
+     services on common ports like 8000; don't assume a "200 OK" from
+     `curl` on your intended port means *your* app answered it, confirm the
+     response body/headers are actually FastAPI/Vite's.
+  2. Install Playwright once per machine (not a repo dependency):
+     `npm install playwright && npx playwright install chromium` in a
+     scratch directory (see the repo's scratchpad convention, not inside
+     `labs/`).
+  3. Script the exact user flow with Playwright's Node API: navigate,
+     `getByLabel`/`getByRole` to fill and click, `waitForSelector` on
+     something that only appears in the end state you want (e.g. "text=Signed
+     in as"), then `page.screenshot({ path, fullPage: true })`. Match
+     button/label text exactly to what's in the `.svelte` source (initial UI
+     state matters, e.g. lab00 loads in "Log in" mode, not "Sign up").
+  4. Save the result under `docs/course/assets/lab-NN-slug/<name>.png`.
+     Zensical copies non-Markdown files under `docs_dir` straight into the
+     built site, confirmed by building and checking `site/assets/...`, so no
+     extra config is needed.
+  5. Reference it with a normal Markdown image:
+     `![what it shows](assets/lab-NN-slug/<name>.png)`.
+  6. Tear down: kill the background backend/frontend processes, revert any
+     temporary config changes (e.g. an API base URL pointed at a scratch
+     port) with `git checkout -- <file>` if the file was already tracked and
+     unmodified before your edit, and delete generated runtime artifacts
+     (`*.db`, `node_modules`, `dist`) before committing.
+
+  If a screenshot genuinely can't be captured this way (a state that needs
+  something Playwright can't drive), name the specific graphic wanted so it
+  can be generated or supplied separately. Never leave the spot as a bare
+  placeholder.
 
 ## Verifying before you're done
 
@@ -102,3 +132,5 @@ exactly what a diagram should replace.
 3. Confirm no solution-only code leaked into a section about the current
    lab's own tasks: grep the built HTML for a distinguishing line from
    `solution/` and expect zero hits there.
+4. If you added a screenshot, confirm the file actually landed in the
+   build: `ls site/assets/lab-NN-slug/`.

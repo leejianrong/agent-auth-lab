@@ -34,10 +34,11 @@ Three standing rules for every lab handout from here on:
    are reserved for labs with an actual multi-service system to show (lab 04
    onward); a single-service lab gets a sequence or flow diagram of the
    mechanism instead. A screenshot of the running app is used where it would
-   clarify an observable outcome; since this repo has no browser-automation
-   tooling to capture one, the handout either describes precisely what to
-   look for in prose, or names the specific graphic wanted so the course
-   author can generate or supply it.
+   clarify an observable outcome, captured with Playwright (confirmed
+   working in this environment: Chromium is available and a real screenshot
+   of lab00's session inspector was captured end to end) rather than
+   described only in prose; see the `write-lab-handout` skill for the
+   concrete steps and the port-conflict gotcha it hit.
 3. **Every handout (lab 00 excepted, being first) opens by closing the loop
    on the previous lab** before its own material: a walkthrough of that
    lab's task solutions (with explanations and a diagram where the fix
@@ -72,6 +73,7 @@ Three standing rules for every lab handout from here on:
 - Reviewing a handout before publishing now includes checking that any shown
   code excerpt genuinely matches `starter/`, not something that quietly
   drifted from `solution/` during editing.
-- Real screenshots remain a gap until this repo has a way to generate them
-  (browser automation) or the course author supplies them directly; handouts
-  should name what's needed rather than embed a placeholder.
+- Screenshots are saved under `docs/course/assets/lab-NN-slug/` (confirmed:
+  Zensical copies non-Markdown files under `docs_dir` straight into the
+  built site) and referenced with a normal Markdown image, never left as a
+  placeholder.
