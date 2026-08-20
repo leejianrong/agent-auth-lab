@@ -12,6 +12,7 @@ nav = [
   { "Course" = "index.md" },
   { "Lab 00: sessions & cookies" = "lab-00-sessions-cookies.md" },
   { "Lab 01: JWTs" = "lab-01-jwt.md" },
+  { "Lab 02: RBAC" = "lab-02-rbac.md" },
 ]
 
 [project.theme]

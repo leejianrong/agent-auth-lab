@@ -80,40 +80,83 @@ def verify_token(token: str) -> TokenVerification:
     of a JWT is base64url, not encrypted. Proving the token wasn't tampered
     with, and hasn't expired, needs the actual signature check below.
     """
-    # TODO(lab-01): this reads the claims out of the token but never checks
-    # whether the signature is genuine — jwt.decode() below is called with
-    # verify_signature=False, so it happily accepts a token whose payload
-    # was hand-edited and re-encoded, as long as the JSON is well-formed. A
-    # JWT's payload is base64url, not encrypted: readable by anyone, proven
-    # authentic by no one, until the signature is actually checked against
-    # the key that issued it. Verify the signature for real instead of
-    # skipping it — decode with the secret and `algorithms=[JWT_ALGORITHM]`,
-    # no `verify_signature` override — and handle the distinct failure
-    # cases (bad signature, expired, missing claim) it can raise. See
-    # "Signed, Not Encrypted" in the lab 01 handout.
-    claims = jwt.decode(token, options={"verify_signature": False})
+    try:
+        unverified_claims = jwt.decode(token, options={"verify_signature": False})
+    except jwt.InvalidTokenError:
+        return TokenVerification(
+            valid=False, signature_valid=False, expired=False,
+            reason="token is not well-formed",
+        )
 
     now = time.time()
-    claimed_exp = claims.get("exp")
-    exp_present = "exp" in claims
+    claimed_exp = unverified_claims.get("exp")
+    exp_present = "exp" in unverified_claims
     exp_well_formed = isinstance(claimed_exp, (int, float))
     expired = exp_well_formed and claimed_exp < now
+
+    try:
+        # verify_exp is turned off deliberately: this call's only job is
+        # checking the signature. PyJWT's own exp handling (left on) would
+        # try to int() a malformed exp claim and raise DecodeError — a
+        # subclass of InvalidTokenError indistinguishable, in the except
+        # branch below, from an actually-forged signature. A malformed exp
+        # is a real, distinct problem (handled right below), but it isn't a
+        # signature problem, and this function must not conflate the two.
+        jwt.decode(
+            token, JWT_SECRET, algorithms=[JWT_ALGORITHM],
+            options={"verify_exp": False},
+        )
+        signature_valid = True
+    except jwt.InvalidTokenError:
+        signature_valid = False
+
+    if not signature_valid:
+        return TokenVerification(
+            valid=False, signature_valid=False, expired=expired,
+            claims=unverified_claims, reason="invalid signature",
+        )
+
     if exp_present and not exp_well_formed:
         return TokenVerification(
-            valid=False, signature_valid=True, expired=False, claims=claims,
-            reason="malformed exp claim",
+            valid=False, signature_valid=True, expired=False,
+            claims=unverified_claims, reason="malformed exp claim",
         )
+
     if expired:
         return TokenVerification(
-            valid=False, signature_valid=True, expired=True, claims=claims,
-            reason="token expired",
+            valid=False, signature_valid=True, expired=True,
+            claims=unverified_claims, reason="token expired",
         )
 
-    missing = [claim for claim in REQUIRED_CLAIMS if claim not in claims]
+    missing = [claim for claim in REQUIRED_CLAIMS if claim not in unverified_claims]
     if missing:
         return TokenVerification(
-            valid=False, signature_valid=True, expired=False, claims=claims,
-            reason=f"missing required claim: {missing[0]}",
+            valid=False, signature_valid=True, expired=False,
+            claims=unverified_claims, reason=f"missing required claim: {missing[0]}",
         )
 
-    return TokenVerification(valid=True, signature_valid=True, expired=False, claims=claims)
+    return TokenVerification(valid=True, signature_valid=True, expired=False, claims=unverified_claims)
+
+
+ADMIN_ROLE = "admin"
+USER_ROLE = "user"
+
+
+def role_is_authorized(role: str, allowed_roles: tuple[str, ...]) -> bool:
+    """Does `role` satisfy the RBAC check for a route that only admits one
+    of `allowed_roles`?
+
+    Kept as a standalone, dependency-free predicate — same reason
+    `verify_token` above is a plain function rather than living inline in a
+    FastAPI route — so it can be unit-tested directly, without spinning up
+    the app or a session.
+    """
+    # TODO(lab-02): this checks whether the caller *has* a role at all, not
+    # whether it's one of `allowed_roles`. Every signed-up user gets the
+    # non-empty role "user" by default (see app/main.py's signup handler),
+    # so `bool(role)` is True for literally every authenticated caller,
+    # admin-gated route or not — a plain "user" satisfies this check just
+    # as easily as an actual admin does. Compare `role` against
+    # `allowed_roles` for real instead of just checking it's non-empty. See
+    # "What the Role Check Actually Has to Compare" in the lab 02 handout.
+    return bool(role)

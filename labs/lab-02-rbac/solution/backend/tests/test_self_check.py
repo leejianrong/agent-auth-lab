@@ -1,12 +1,12 @@
-"""Self-check suite for lab 01. Run this against your own implementation
+"""Self-check suite for lab 02. Run this against your own implementation
 with:
 
     pytest tests/test_self_check.py -v
 
 Every test here is one line of the "you're done when" checklist in the
-lab 01 handout, made executable. The session-cookie tests inherited from
-lab 00 stay in this file unchanged — lab 01 doesn't touch that code path,
-it adds a second, stateless one alongside it.
+lab 02 handout, made executable. The session-cookie and JWT tests
+inherited from labs 00 and 01 stay in this file unchanged — lab 02
+doesn't touch either code path, it adds a role check alongside them.
 """
 
 import time
@@ -207,29 +207,6 @@ def test_verify_rejects_missing_required_claim(client, new_username):
     assert body["reason"] == "missing required claim: sub"
 
 
-def test_verify_reports_malformed_exp_as_its_own_reason_not_bad_signature():
-    """Regression test: a token can be genuinely signed with the real
-    secret and still carry a malformed (non-numeric) `exp` claim. That used
-    to get misreported as `signature_valid=False, reason="invalid
-    signature"` — a real bug, since the signature was never the problem.
-    PyJWT's own exp handling tries to int() the claim during the verifying
-    decode() call and raises DecodeError (an InvalidTokenError subclass),
-    which a signature check that doesn't disable verify_exp can't tell
-    apart from an actually-forged signature. A malformed exp must be
-    reported as its own distinct, honest failure reason instead.
-
-    Calls `verify_token()` directly (not through `/verify`) so this doesn't
-    add an extra audit event that `test_verify_denials_produce_distinct_audit_reasons`
-    above would otherwise pick up via `audit_log.recent()`.
-    """
-    token_with_bad_exp = _make_token({"sub": "alice", "exp": "soon"})
-
-    result = security.verify_token(token_with_bad_exp)
-    assert result.valid is False
-    assert result.signature_valid is True, "the signature itself was genuine"
-    assert result.reason == "malformed exp claim"
-
-
 def test_verify_denials_produce_distinct_audit_reasons(client, new_username):
     from app.main import audit_log
 
@@ -279,3 +256,104 @@ def test_verify_unit_level_distinct_errors():
     assert expired_result.valid is False and expired_result.reason == "token expired"
     assert missing_result.valid is False and missing_result.reason == "missing required claim: sub"
     assert len({bad_sig.reason, expired_result.reason, missing_result.reason}) == 3
+
+
+def test_verify_reports_malformed_exp_as_its_own_reason_not_bad_signature():
+    """Regression test carried in from a lab 01 fix: a token can be
+    genuinely signed with the real secret and still carry a malformed
+    (non-numeric) `exp` claim. That must be reported as its own distinct
+    reason, not misattributed to the signature.
+
+    Calls `verify_token()` directly (not through `/verify`) so it doesn't
+    add an extra audit event that the RBAC audit-reason tests below, or
+    lab 01's own audit-reason test above, would otherwise pick up via
+    `audit_log.recent()`.
+    """
+    token_with_bad_exp = jwt.encode(
+        {"sub": "alice", "exp": "soon"}, security.JWT_SECRET, algorithm=security.JWT_ALGORITHM
+    )
+
+    result = security.verify_token(token_with_bad_exp)
+    assert result.valid is False
+    assert result.signature_valid is True, "the signature itself was genuine"
+    assert result.reason == "malformed exp claim"
+
+
+# --- lab 02: roles and RBAC ------------------------------------------------
+
+
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "lab02-admin-do-not-reuse"
+
+
+def _login_as_seeded_admin(client) -> None:
+    resp = client.post("/login", json={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD})
+    assert resp.status_code == 200, "the seeded admin account must be able to log in"
+
+
+def test_signup_defaults_to_user_role(client, new_username):
+    resp = client.post("/signup", json={"username": new_username, "password": "hunter22"})
+    assert resp.status_code == 201
+    assert resp.json()["role"] == "user"
+
+
+def test_me_reports_caller_role(client, new_username):
+    _login(client, new_username)
+    resp = client.get("/me")
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "user"
+
+
+def test_admin_can_list_users(client):
+    _login_as_seeded_admin(client)
+    resp = client.get("/admin/users")
+    assert resp.status_code == 200
+    usernames = {row["username"] for row in resp.json()}
+    assert ADMIN_USERNAME in usernames
+
+
+def test_plain_user_denied_admin_panel(client, new_username):
+    """The exact integration case SLICES.md's test plan names: a user
+    without the admin role is denied the admin panel, and that denial is
+    visible in the audit log."""
+    from app.main import audit_log
+
+    _login(client, new_username)
+    resp = client.get("/admin/users")
+    assert resp.status_code == 403
+
+    events = audit_log.recent(limit=20)
+    denials = [e for e in events if e.action == "list_users" and e.decision == "deny"]
+    assert denials, "expected a deny audit event for the rejected admin-panel request"
+    assert "admin" in denials[0].reason
+    assert "user" in denials[0].reason
+
+
+def test_admin_panel_denial_reason_names_both_roles(client, new_username):
+    from app.main import audit_log
+
+    _login(client, new_username)
+    client.get("/admin/users")
+
+    events = audit_log.recent(limit=20)
+    denial = next(e for e in events if e.action == "list_users" and e.decision == "deny")
+    assert denial.reason == "requires role in ['admin'], caller has role 'user'"
+    assert denial.resource == "admin_panel"
+
+
+def test_admin_panel_requires_login_before_role_check(client):
+    """No session at all must fail with 401 (authenticate first), not 403
+    (authorize) — the RBAC dependency chains off `get_current_session` and
+    never runs the role check for an unauthenticated caller."""
+    resp = client.get("/admin/users")
+    assert resp.status_code == 401
+
+
+def test_role_is_authorized_exact_match():
+    """Unit test SLICES.md's test plan names directly: RBAC denies
+    correctly for a role not in the allow-list — and only allows a role
+    that's actually in it, not merely non-empty."""
+    assert security.role_is_authorized("admin", ("admin",)) is True
+    assert security.role_is_authorized("user", ("admin",)) is False
+    assert security.role_is_authorized("user", ("admin", "user")) is True
+    assert security.role_is_authorized("", ("admin",)) is False
