@@ -127,6 +127,18 @@ attributes of the resource, and the relationship between the caller and
 that resource, not just the caller's role. This lab's version needs
 exactly one relationship: is the caller the resource's owner.
 
+The two rules that matter here split cleanly along that line.
+`admin-full-access` is the ABAC case: it looks at one attribute of the
+subject, their role, and never touches the resource at all.
+`owner-full-access` is the ReBAC case: it can only be decided by comparing
+the caller to the specific resource in front of them, which is a
+relationship, not a property either side owns alone. It's stored as a
+plain `owner_id` column, so the code looks like an ordinary attribute
+comparison, `subject.id == resource.owner_id`, but what makes it
+relationship-based isn't the storage, it's that the answer changes
+depending on which two things you're comparing, not on anything you could
+read off the caller or the note in isolation.
+
 ### Rules as data, not a pile of ifs
 
 ADR-0007 asks for a policy evaluator where a decision can point at the
@@ -222,7 +234,7 @@ def _is_owner(subject: Subject, resource: ResourceAttrs, action: str) -> bool:
     return resource.owner_id == resource.owner_id
 ```
 
-!!! danger "Intentionally vulnerable code — localhost teaching only"
+!!! danger "Intentionally vulnerable code: localhost teaching only"
     This is a real ABAC bypass, in the same spirit ADR-0008 calls out for
     lab 00's plaintext passwords and lab 02's privilege escalation, even
     though ADR-0008 doesn't name this lab specifically: it's an actual
