@@ -47,6 +47,7 @@ jobs:
           - lab-00-sessions-cookies
           - lab-01-jwt
           - lab-02-rbac
+          - lab-03-abac-rebac
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -68,6 +69,7 @@ jobs:
           - lab-00-sessions-cookies
           - lab-01-jwt
           - lab-02-rbac
+          - lab-03-abac-rebac
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -89,6 +91,7 @@ jobs:
           - lab-00-sessions-cookies
           - lab-01-jwt
           - lab-02-rbac
+          - lab-03-abac-rebac
         variant: [solution, starter]
     steps:
       - uses: actions/checkout@v7
