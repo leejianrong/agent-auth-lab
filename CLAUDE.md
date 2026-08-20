@@ -1,7 +1,7 @@
 # Agent Auth Lab
 
-A 14-lab (00–13), hands-on course teaching authentication and authorization
-— starting from traditional web auth (sessions, JWT, RBAC/ABAC), through
+A 14-lab (00–13), hands-on course teaching authentication and authorization,
+starting from traditional web auth (sessions, JWT, RBAC/ABAC), through
 federated identity (OIDC/OAuth2), to authn/authz for autonomous agents
 (scoped tool tokens, delegated on-behalf-of authority, human-in-the-loop
 approval, multi-agent authz, unified audit/revocation). Labs build one
@@ -31,7 +31,7 @@ what's assumed, what's deferred).
 - Backend: Python 3.12 + FastAPI, everywhere (ADR-0001). Use `python3.12` /
   `uv venv --python 3.12` when creating a lab's virtualenv — not 3.11, not
   whatever `python3` happens to resolve to on the machine.
-- Frontend: Svelte + Vite, wherever a lab needs a UI (ADR-0001).
+- Frontend: Svelte + Vite + TypeScript, wherever a lab needs a UI (ADR-0001).
 - Storage: SQLite only, no other database (ADR-0002).
 - Agents (labs 07+): deterministic scripted runner by default. The optional
   real-LLM stretch path talks to any OpenAI-compatible API (e.g. OpenRouter)
@@ -52,8 +52,18 @@ what's assumed, what's deferred).
   not skimmed by an engineer who already knows the domain, so stiff or
   visibly AI-flavored prose costs the most there.
 - Lab handouts follow the university-lab-handout shape: objectives,
-  background/concepts, step-by-step build instructions, a concrete
-  "you're done when" checklist, then open-ended extension questions.
+  a discussion of the previous lab's "going further" questions (every lab
+  except 00), background/concepts, step-by-step build instructions, a
+  concrete "you're done when" checklist, then this lab's own open-ended
+  "going further" questions (ADR-0010).
 - Every lab's observable outcome (a UI panel, a denied request, a trace)
   should be named explicitly in its handout — this course teaches by
   watching something happen, not by reading about it.
+- No solution code in a handout, ever. Code excerpts shown are always the
+  starter's TODO-bearing state; the fix is described in prose (which file,
+  which function, which property it must have), never pasted in (ADR-0010).
+- At least one diagram per background/explainer section. Mermaid by default
+  (Zensical renders it natively, no extra assets); C4-style diagrams only
+  once a lab has a real multi-service architecture to show (lab 04+). Name
+  a screenshot or graphic explicitly if one is needed rather than leaving
+  the section as a wall of text (ADR-0010).

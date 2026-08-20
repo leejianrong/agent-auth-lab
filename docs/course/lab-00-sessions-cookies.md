@@ -31,9 +31,31 @@ A cookie is just a string the browser sends back on every request to the
 domain that set it. On its own it proves nothing. The security comes from
 what's on the server: a session record that says "this opaque string
 corresponds to user 42, created at this time, expiring at that time." The
-cookie is a claim; the session record is the source of truth. In this lab,
-`GET /sessions/mine` shows you both sides at once, so you can watch the
-difference for yourself.
+cookie is a claim; the session record is the source of truth.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant S as Server
+    participant DB as sessions table
+
+    B->>S: POST /login {username, password}
+    S->>S: verify password against stored hash
+    S->>DB: INSERT new session row (id, user_id, expires_at)
+    S-->>B: Set-Cookie: session_id=... (HttpOnly)
+
+    Note over B: JavaScript on the page can never read this cookie
+
+    B->>S: GET /sessions/mine (cookie sent automatically)
+    S->>DB: SELECT session by id
+    DB-->>S: session row
+    S-->>B: session details (id prefix, created_at, expires_at)
+```
+
+In this lab, `GET /sessions/mine` shows you both sides at once: the
+`document.cookie` value your own JavaScript sees (empty, since the cookie is
+`HttpOnly`), next to what the server actually holds for your session. Watch
+the difference for yourself once you're running it.
 
 ### Why hash passwords
 
@@ -55,18 +77,29 @@ instead; the principle is identical even if the algorithm differs.
 Here's the attack this lab makes you fix. Suppose login "elevates" whatever
 session the browser already presents, rather than issuing a fresh one:
 
-1. An attacker visits the site, gets an anonymous session cookie, and somehow
-   gets the victim to load a page with that same cookie set (a crafted link,
-   a subdomain that shares a cookie scope, a network in the middle).
-2. The victim logs in normally. If the server just attaches the victim's
-   identity to the session id that was already sitting in the cookie, the
-   attacker's copy of that same session id is now authenticated too.
-3. The attacker was never near the victim's password. They just needed the
-   session id to survive the login.
+```mermaid
+sequenceDiagram
+    participant A as Attacker
+    participant V as Victim
+    participant S as Server (vulnerable)
 
-The fix is one rule: **login always issues a brand-new session id**, and
-never reuses whatever the client happened to send beforehand. You'll find the
-`TODO` for this in `resolve_login_session_id`.
+    A->>S: visit site, no login
+    S-->>A: Set-Cookie: session_id=FIXED123
+    A->>V: trick victim into using session_id=FIXED123<br/>(crafted link, shared subdomain, network MITM)
+    Note over V: victim's browser now holds FIXED123 too
+
+    V->>S: POST /login {username, password} (cookie: FIXED123)
+    Note over S: bug: server reuses FIXED123 instead of<br/>minting a new session id
+    S-->>V: FIXED123 is now authenticated as the victim
+
+    A->>S: GET /me (cookie: FIXED123)
+    S-->>A: 200 OK, authenticated as the victim
+```
+
+The attacker was never near the victim's password. They just needed their
+chosen session id to survive the victim's login. The fix is one rule:
+**login always issues a brand-new session id**, and never reuses whatever
+the client happened to send beforehand.
 
 ## Prerequisites
 
@@ -89,42 +122,56 @@ npm install
 
 ## Your tasks
 
-Open `starter/backend/app/security.py`. You'll find two functions with a
-`TODO(lab-00)` comment each, and one more in `main` for the session fixation
-fix described above.
+Open `starter/backend/app/security.py`. You'll find three functions marked
+with a `TODO(lab-00)` comment.
 
 ### 1. Hash passwords properly
 
-`hash_password` currently returns the password unchanged, and
-`verify_password` just compares strings. Fix both using the `argon2`
-package, which is already a dependency:
+Right now, `hash_password` and `verify_password` look like this:
 
-```python title="security.py"
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
-
-_hasher = PasswordHasher()
-
+```python title="starter/backend/app/security.py"
 def hash_password(password: str) -> str:
-    return _hasher.hash(password)
+    # TODO(lab-00): this stores the password as-is. Anyone who reads the
+    # database (a backup, a leaked file, an SQL-injection bug elsewhere)
+    # gets every user's real password. Hash it instead — see the "Password
+    # Hashing" section of the lab 00 handout, and the `argon2` package
+    # that's already a dependency.
+    return password
+
 
 def verify_password(password: str, password_hash: str) -> bool:
-    try:
-        _hasher.verify(password_hash, password)
-        return True
-    except VerifyMismatchError:
-        return False
+    # TODO(lab-00): this only works because hash_password() above doesn't
+    # actually hash anything yet. Once you fix hash_password(), this needs
+    # to verify against the hash, not compare raw strings.
+    return password == password_hash
 ```
+
+Fix both using the `argon2` package, which is already a dependency and
+already imported at the top of the file. `PasswordHasher` (from
+`argon2`) has a `.hash(password)` method for writes and a `.verify(hash,
+password)` method for reads; the latter raises `VerifyMismatchError`
+(already imported for you) on a mismatch rather than returning `False`
+directly, so `verify_password` needs to catch that.
 
 ### 2. Stop session fixation
 
-In `resolve_login_session_id`, stop reusing the cookie the client already
-sent. Always mint a fresh one on a successful login:
+Further down the same file, `resolve_login_session_id` looks like this:
 
-```python title="security.py"
+```python title="starter/backend/app/security.py"
 def resolve_login_session_id(cookie_session_id: str | None) -> str:
-    return new_session_id()
+    """What session id does a successful login issue?"""
+    # TODO(lab-00): reusing whatever session id the client already sent (or
+    # minting one only if none was sent) opens session fixation — an
+    # attacker can set a victim's cookie *before* they log in, then reuse
+    # that same session id afterward, now authenticated as the victim.
+    # Always issue a fresh session id here instead. See "Session Fixation"
+    # in the lab 00 handout.
+    return cookie_session_id or new_session_id()
 ```
+
+Fix it so a successful login always mints a fresh session id, ignoring
+`cookie_session_id` entirely. `new_session_id()` is already defined a few
+lines above and does exactly what its name says.
 
 !!! warning "Don't just delete the parameter"
     It's tempting to simplify the function signature once you stop using
@@ -148,10 +195,10 @@ npm run dev
 
 Open the frontend (Vite will print the local URL, normally
 `http://localhost:5173`). Sign up, log in, and look at the session inspector
-panel: it shows you `document.cookie` as your own JavaScript sees it
-(empty, because the cookie is `HttpOnly`) next to what the server actually
-holds for your session. Below that, the audit log panel updates live every
-time you log in, log out, or get denied.
+panel: it shows you `document.cookie` as your own JavaScript sees it next to
+what the server actually holds for your session, matching the first diagram
+above. Below that, the audit log panel updates live every time you log in,
+log out, or get denied.
 
 ## You're done when
 
@@ -178,7 +225,7 @@ Run the self-check suite from `starter/backend`:
 ## Going further
 
 These don't have a self-check. Try them, then decide for yourself whether
-your answer holds up.
+your answer holds up. Lab 01's handout opens with a discussion of these.
 
 1. This lab hashes session tokens nowhere: the raw session id sits in the
    `sessions` table exactly as it's sent in the cookie. What's the actual
