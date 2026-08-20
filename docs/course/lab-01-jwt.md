@@ -72,9 +72,12 @@ def resolve_login_session_id(cookie_session_id: str | None) -> str:
 ```
 
 The parameter is still there even though the function no longer looks at
-it. That's deliberate: a later lab needs a function shaped like "take
-whatever credential arrived on the request, decide what to issue back,"
-and keeping the signature stable now saves a rename later.
+it. That's a side effect of how the starter is generated, not a design
+choice about this function specifically: `scripts/generate_starter.py`
+swaps the function *body* between the `LAB:SOLUTION` and `LAB:STARTER`
+blocks, but the `def` line itself is written once and shared by both. The
+starter's buggy body still reads `cookie_session_id`, so the signature has
+to keep accepting it, whether or not the fixed body above uses it.
 
 ```mermaid
 sequenceDiagram
