@@ -11,6 +11,7 @@ edit_uri = "edit/main/docs/course/"
 nav = [
   { "Course" = "index.md" },
   { "Lab 00: sessions & cookies" = "lab-00-sessions-cookies.md" },
+  { "Lab 01: JWTs" = "lab-01-jwt.md" },
 ]
 
 [project.theme]
