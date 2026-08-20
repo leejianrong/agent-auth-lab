@@ -45,25 +45,13 @@ what's assumed, what's deferred).
 
 ## Writing conventions
 
-- **Always invoke the `/natural-writing` skill before drafting or editing
-  any prose document in this repo** — lab handouts, `PLAN.md`, ADRs,
-  READMEs, everything. This matters most for learner-facing material
-  (`docs/course/**`): those are read by a junior developer trying to learn,
-  not skimmed by an engineer who already knows the domain, so stiff or
-  visibly AI-flavored prose costs the most there.
-- Lab handouts follow the university-lab-handout shape: objectives,
-  a discussion of the previous lab's "going further" questions (every lab
-  except 00), background/concepts, step-by-step build instructions, a
-  concrete "you're done when" checklist, then this lab's own open-ended
-  "going further" questions (ADR-0010).
+- **Always invoke `/natural-writing` before drafting or editing any prose
+  document in this repo** — lab handouts, `PLAN.md`, ADRs, READMEs,
+  everything.
+- **Writing or editing a lab handout specifically? Invoke the
+  `write-lab-handout` project skill.** It covers handout structure (closing
+  the loop on the previous lab before introducing the next one), the
+  no-spoilers rule, and diagram requirements (ADR-0010).
 - Every lab's observable outcome (a UI panel, a denied request, a trace)
   should be named explicitly in its handout — this course teaches by
   watching something happen, not by reading about it.
-- No solution code in a handout, ever. Code excerpts shown are always the
-  starter's TODO-bearing state; the fix is described in prose (which file,
-  which function, which property it must have), never pasted in (ADR-0010).
-- At least one diagram per background/explainer section. Mermaid by default
-  (Zensical renders it natively, no extra assets); C4-style diagrams only
-  once a lab has a real multi-service architecture to show (lab 04+). Name
-  a screenshot or graphic explicitly if one is needed rather than leaving
-  the section as a wall of text (ADR-0010).
