@@ -45,6 +45,7 @@ jobs:
       matrix:
         lab:
           - lab-00-sessions-cookies
+          - lab-01-jwt
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -64,6 +65,7 @@ jobs:
       matrix:
         lab:
           - lab-00-sessions-cookies
+          - lab-01-jwt
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -83,6 +85,7 @@ jobs:
       matrix:
         lab:
           - lab-00-sessions-cookies
+          - lab-01-jwt
         variant: [solution, starter]
     steps:
       - uses: actions/checkout@v7
