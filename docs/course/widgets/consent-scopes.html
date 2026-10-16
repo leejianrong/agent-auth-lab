@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scopes and revocation, interactive</title>
+<style>
+  :root { --bg:#fff; --fg:#1f2430; --mute:#667; --line:#d5d9e2; --acc:#4051b5; --soft:#e8ebfa; --ok:#2b8a3e; --bad:#c92a2a; --warn:#a8500c; --code:#f4f5f9; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1e2129; --fg:#e6e8ee; --mute:#9aa; --line:#3a3f4c; --acc:#9aa7ff; --soft:#262c4d; --ok:#69db7c; --bad:#ff8787; --warn:#f0a560; --code:#272b35; } }
+  :root[data-theme="dark"] { --bg:#1e2129; --fg:#e6e8ee; --mute:#9aa; --line:#3a3f4c; --acc:#9aa7ff; --soft:#262c4d; --ok:#69db7c; --bad:#ff8787; --warn:#f0a560; --code:#272b35; }
+  :root[data-theme="light"] { --bg:#fff; --fg:#1f2430; --mute:#667; --line:#d5d9e2; --acc:#4051b5; --soft:#e8ebfa; --ok:#2b8a3e; --bad:#c92a2a; --warn:#a8500c; --code:#f4f5f9; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:14px; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+  h1 { font-size:15px; margin:0 0 2px; } p.sub { margin:0 0 10px; color:var(--mute); font-size:12.5px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; } @media (max-width:560px){ .grid { grid-template-columns:1fr; } }
+  .card { border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .card h2 { font:600 11px ui-monospace, monospace; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); margin:0 0 8px; }
+  label.row { display:flex; gap:8px; align-items:center; margin:3px 0; font-family:ui-monospace, monospace; font-size:12.5px; }
+  .tag { font:600 10px ui-monospace, monospace; padding:1px 6px; border-radius:99px; border:1px solid var(--line); color:var(--mute); }
+  .tag.unk { color:var(--warn); border-color:var(--warn); }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; min-height:24px; }
+  .chip { font:12px ui-monospace, monospace; background:var(--soft); color:var(--fg); padding:2px 8px; border-radius:99px; }
+  .modes { margin-top:10px; display:grid; gap:4px; font-size:12.5px; }
+  table { width:100%; border-collapse:collapse; margin-top:4px; font-size:12.5px; }
+  td { padding:5px 4px; border-top:1px solid var(--line); } td:first-child { font-family:ui-monospace, monospace; }
+  .ok { color:var(--ok); font-weight:600; } .bad { color:var(--bad); font-weight:600; }
+  button { font:inherit; font-size:12.5px; padding:5px 11px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--fg); cursor:pointer; }
+  button:hover { border-color:var(--acc); }
+  .status { margin-top:8px; font-size:12.5px; }
+</style>
+</head>
+<body>
+<h1>Scopes, consent and revocation</h1>
+<p class="sub">The app asks, the user ticks, the IdP grants, the app checks. Change any step and watch what each route allows.</p>
+
+<div class="grid">
+  <div class="card">
+    <h2>1. What the app asks for</h2>
+    <div id="asks"></div>
+    <h2 style="margin-top:12px">2. What the user ticks</h2>
+    <div id="ticks"></div>
+  </div>
+  <div class="card">
+    <h2>3. What the IdP puts in the token</h2>
+    <div class="chips" id="granted" aria-live="polite"></div>
+    <div class="modes">
+      <label><input type="checkbox" id="bugGrant"> starter behaviour: grant whatever was requested</label>
+      <label><input type="checkbox" id="bugMatch"> starter behaviour: match scopes by substring</label>
+    </div>
+    <div class="status" id="tokenStatus"></div>
+    <div style="margin-top:8px"><button id="revoke" type="button">Revoke the token</button> <button id="reset" type="button">Reset</button></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>4. What each route does with it</h2>
+  <table id="routes"></table>
+</div>
+
+<script>
+const KNOWN = { "openid":"required", "profile":"", "notes:read":"", "notes:write":"", "notes:write-all":"unknown to the IdP" };
+const REQUIRED = new Set(["openid"]);
+const ROUTES = [["GET /notes/mine","notes:read"],["POST /notes","notes:write"],["PUT /notes/{id}","notes:write"]];
+const state = { asked: new Set(["openid","profile","notes:read","notes:write"]), ticked: new Set(["openid","profile","notes:read","notes:write"]), revoked:false };
+const $ = (id) => document.getElementById(id);
+
+function known(name) { return name !== "notes:write-all"; }
+function granted() {
+  const asked = [...state.asked];
+  if ($("bugGrant").checked) return asked;
+  return asked.filter((s) => known(s) && (state.ticked.has(s) || REQUIRED.has(s)));
+}
+function has(grantedList, need) {
+  const str = grantedList.join(" ");
+  return $("bugMatch").checked ? str.includes(need) : grantedList.includes(need);
+}
+function box(group, name, set, onchange) {
+  const l = document.createElement("label"); l.className = "row";
+  const i = document.createElement("input"); i.type = "checkbox"; i.checked = set.has(name); i.disabled = REQUIRED.has(name);
+  i.addEventListener("change", () => { i.checked ? set.add(name) : set.delete(name); onchange(); });
+  l.appendChild(i); l.appendChild(document.createTextNode(name));
+  if (KNOWN[name]) { const t = document.createElement("span"); t.className = "tag" + (known(name) ? "" : " unk"); t.textContent = KNOWN[name]; l.appendChild(t); }
+  group.appendChild(l);
+}
+function build() {
+  $("asks").textContent = ""; $("ticks").textContent = "";
+  Object.keys(KNOWN).forEach((n) => box($("asks"), n, state.asked, render));
+  Object.keys(KNOWN).filter((n) => state.asked.has(n)).forEach((n) => box($("ticks"), n, state.ticked, render));
+}
+function render() {
+  // ticks list follows what was asked
+  [...state.ticked].forEach((n) => { if (!state.asked.has(n)) state.ticked.delete(n); });
+  $("ticks").textContent = "";
+  Object.keys(KNOWN).filter((n) => state.asked.has(n)).forEach((n) => box($("ticks"), n, state.ticked, render));
+  const g = granted();
+  const chips = $("granted"); chips.textContent = "";
+  g.forEach((s) => { const c = document.createElement("span"); c.className = "chip"; c.textContent = s; chips.appendChild(c); });
+  if (!g.length) chips.textContent = "(nothing)";
+  const ts = $("tokenStatus");
+  ts.textContent = state.revoked ? "Token revoked: introspection now answers active = false." : "Token active.";
+  ts.className = "status " + (state.revoked ? "bad" : "ok");
+  const t = $("routes"); t.textContent = "";
+  ROUTES.forEach(([route, need]) => {
+    const tr = document.createElement("tr");
+    const a = document.createElement("td"); a.textContent = route + " (needs " + need + ")";
+    const b = document.createElement("td");
+    if (state.revoked) { b.className = "bad"; b.textContent = "401 session ended"; }
+    else if (has(g, need)) { b.className = "ok"; b.textContent = "allowed"; }
+    else { b.className = "bad"; b.textContent = "403 insufficient_scope"; }
+    tr.appendChild(a); tr.appendChild(b); t.appendChild(tr);
+  });
+}
+$("bugGrant").addEventListener("change", render); $("bugMatch").addEventListener("change", render);
+$("revoke").addEventListener("click", () => { state.revoked = true; render(); });
+$("reset").addEventListener("click", () => { state.revoked = false; state.asked = new Set(["openid","profile","notes:read","notes:write"]); state.ticked = new Set(state.asked); $("bugGrant").checked = false; $("bugMatch").checked = false; build(); render(); });
+addEventListener("message", (e) => { if (e.data && e.data.type === "theme") document.documentElement.dataset.theme = e.data.scheme; });
+build(); render();
+</script>
+</body>
+</html>

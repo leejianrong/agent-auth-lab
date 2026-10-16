@@ -262,6 +262,14 @@ knows, and that is what introspection is for. You pay one request to the IdP
 per request to the app, and in exchange a revoked token stops working on the
 very next click instead of at expiry.
 
+Try the whole chain in this widget before you write any code. The app asks,
+the user ticks, the IdP grants, and the app checks. Your task: ask for
+`notes:write-all`, tick only `notes:read`, and see what the routes allow.
+Then switch on each "starter behaviour" box, one at a time, and watch which
+bug lets the extra scope through.
+
+<iframe class="widget-frame" src="../widgets/consent-scopes.html" title="Interactive: scopes, consent and revocation" height="640" loading="lazy"></iframe>
+
 ## Prerequisites and setup
 
 - Python 3.12, Node.js (any recent version, built on Node 24), `uv` or `pip`
