@@ -18,6 +18,7 @@ nav = [
   { "Lab 02: RBAC" = "lab-02-rbac.md" },
   { "Lab 03: ABAC/ReBAC" = "lab-03-abac-rebac.md" },
   { "Lab 04: OIDC login" = "lab-04-oidc.md" },
+  { "Lab 05: consent and revocation" = "lab-05-consent-revocation.md" },
 ]
 
 [project.theme]
