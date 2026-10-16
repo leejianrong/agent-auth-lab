@@ -65,6 +65,7 @@ jobs:
           - lab-01-jwt
           - lab-02-rbac
           - lab-03-abac-rebac
+          - lab-04-oidc
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -87,6 +88,7 @@ jobs:
           - lab-01-jwt
           - lab-02-rbac
           - lab-03-abac-rebac
+          - lab-04-oidc
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -109,6 +111,7 @@ jobs:
           - lab-01-jwt
           - lab-02-rbac
           - lab-03-abac-rebac
+          - lab-04-oidc
         variant: [solution, starter]
     steps:
       - uses: actions/checkout@v7
