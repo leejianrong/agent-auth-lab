@@ -8,6 +8,9 @@ repo_url = "https://github.com/leejianrong/agent-auth-lab"
 repo_name = "leejianrong/agent-auth-lab"
 edit_uri = "edit/main/docs/course/"
 
+extra_css = ["stylesheets/extra.css"]
+extra_javascript = ["javascripts/stepper.js", "javascripts/embed.js"]
+
 nav = [
   { "Course" = "index.md" },
   { "Lab 00: sessions & cookies" = "lab-00-sessions-cookies.md" },

@@ -1,6 +1,6 @@
 # ADR-0010: No spoilers for the current lab, diagrams over prose walls, cross-lab discussion of the previous lab
 
-- Status: Accepted
+- Status: Accepted (rules 2 and 3 amended for labs 04 onward by ADR-0011)
 - Date: 2026-08-20
 - Deciders: user
 

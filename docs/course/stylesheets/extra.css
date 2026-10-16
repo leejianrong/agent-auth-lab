@@ -1,0 +1,78 @@
+/* Handout engagement components. See docs/adr and the AAL-11 spike write-up. */
+
+/* ---- Stepper (clickthrough) ---- */
+.stepper {
+  margin: 1.5em 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.5rem;
+  background: var(--md-code-bg-color);
+}
+.stepper:focus-visible { outline: 2px solid var(--md-accent-fg-color); outline-offset: 2px; }
+.md-typeset .stepper-diagram { margin: 0 0 1rem; width: 100%; max-width: 100%; }
+.stepper-diagram svg { width: 100%; height: auto; display: block; font-family: var(--md-text-font-family, sans-serif); }
+
+.stepper .step[hidden] { display: none; }
+.stepper--js .step { min-height: 7.5rem; animation: step-in 0.2s ease-out; }
+.stepper .step > :first-child { margin-top: 0; }
+.stepper .step::before {
+  content: attr(data-title);
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 700;
+  color: var(--md-primary-fg-color);
+}
+@keyframes step-in { from { opacity: 0; transform: translateY(4px); } }
+
+.stepper-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 0.75rem; }
+.md-typeset ol.stepper-dots { display: flex; flex-direction: row; flex-wrap: wrap; gap: 0.35rem; list-style: none; margin: 0; padding: 0; }
+.md-typeset ol.stepper-dots li { margin: 0; padding: 0; }
+.stepper-dots button {
+  width: 1.7rem; height: 1.7rem; border-radius: 50%;
+  border: 1px solid var(--md-default-fg-color--lighter);
+  background: transparent; color: var(--md-default-fg-color--light);
+  font: inherit; font-size: 0.7rem; cursor: pointer;
+}
+.stepper-dots button.is-done { background: var(--md-default-fg-color--lightest); }
+.stepper-dots button.is-current {
+  background: var(--md-primary-fg-color); border-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+}
+.stepper-btn {
+  padding: 0.35rem 0.9rem; border-radius: 0.3rem; cursor: pointer; font: inherit; font-size: 0.8rem;
+  border: 1px solid var(--md-default-fg-color--lighter); background: transparent; color: var(--md-default-fg-color);
+}
+.stepper-btn--primary { background: var(--md-primary-fg-color); border-color: var(--md-primary-fg-color); color: var(--md-primary-bg-color); }
+.stepper-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* Diagram states driven by data-hl. Everything dim until a step lights it. */
+.flow .actor rect { fill: var(--md-default-bg-color); stroke: var(--md-default-fg-color--light); stroke-width: 1.5; }
+.flow .actor text { fill: var(--md-default-fg-color); font-size: 14px; font-weight: 600; }
+.flow .life { stroke: var(--md-default-fg-color--lighter); stroke-dasharray: 4 4; }
+.flow .msg { opacity: 0.18; transition: opacity 0.25s; }
+.flow .msg line { stroke: var(--md-default-fg-color); stroke-width: 2; }
+.flow .msg polygon { fill: var(--md-default-fg-color); }
+.flow .msg text { fill: var(--md-default-fg-color); font-size: 12px; }
+.flow .msg.hl-done { opacity: 0.55; }
+.flow .msg.hl-on { opacity: 1; }
+.flow .msg.hl-on line { stroke: var(--md-accent-fg-color); stroke-dasharray: 8 6; animation: dash 0.8s linear infinite; }
+.flow .msg.hl-on polygon { fill: var(--md-accent-fg-color); }
+.flow .msg.hl-on text { fill: var(--md-accent-fg-color); font-weight: 700; }
+.flow .secret { opacity: 0.18; transition: opacity 0.25s; }
+.flow .secret rect { fill: var(--md-accent-fg-color--transparent); stroke: var(--md-accent-fg-color); stroke-width: 1.5; rx: 4; }
+.flow .secret text { fill: var(--md-default-fg-color); font-size: 12px; }
+.flow .secret.hl-done { opacity: 0.6; }
+.flow .secret.hl-on { opacity: 1; }
+.flow .hl-pulse { animation: pulse 0.6s ease-out; }
+@keyframes dash { to { stroke-dashoffset: -28; } }
+@keyframes pulse { 0% { filter: drop-shadow(0 0 0 transparent); } 40% { filter: drop-shadow(0 0 6px var(--md-accent-fg-color)); } 100% { filter: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .stepper--js .step, .flow .msg.hl-on line { animation: none; }
+}
+
+/* ---- Embedded widget frame ---- */
+.widget-frame {
+  width: 100%; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 0.5rem;
+  background: var(--md-default-bg-color); margin: 1rem 0;
+}
