@@ -20,6 +20,7 @@ nav = [
   { "Lab 04: OIDC login" = "lab-04-oidc.md" },
   { "Lab 05: consent and revocation" = "lab-05-consent-revocation.md" },
   { "Lab 06: service-to-service" = "lab-06-service-to-service.md" },
+  { "Lab 07: agent identity" = "lab-07-agent-identity.md" },
 ]
 
 [project.theme]
