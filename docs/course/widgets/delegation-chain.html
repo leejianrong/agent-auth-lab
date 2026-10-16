@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delegation chain, interactive</title>
+<style>
+  :root { --bg:#fff; --fg:#1f2430; --mute:#667; --line:#d5d9e2; --acc:#4051b5; --soft:#e8ebfa; --ok:#2b8a3e; --bad:#c92a2a; --warn:#a8500c; --code:#f4f5f9; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1e2129; --fg:#e6e8ee; --mute:#9aa; --line:#3a3f4c; --acc:#9aa7ff; --soft:#262c4d; --ok:#69db7c; --bad:#ff8787; --warn:#f0a560; --code:#272b35; } }
+  :root[data-theme="dark"] { --bg:#1e2129; --fg:#e6e8ee; --mute:#9aa; --line:#3a3f4c; --acc:#9aa7ff; --soft:#262c4d; --ok:#69db7c; --bad:#ff8787; --warn:#f0a560; --code:#272b35; }
+  :root[data-theme="light"] { --bg:#fff; --fg:#1f2430; --mute:#667; --line:#d5d9e2; --acc:#4051b5; --soft:#e8ebfa; --ok:#2b8a3e; --bad:#c92a2a; --warn:#a8500c; --code:#f4f5f9; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:14px; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+  h1 { font-size:15px; margin:0 0 2px; } p.sub { margin:0 0 10px; color:var(--mute); font-size:12.5px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; } @media (max-width:600px){ .grid { grid-template-columns:1fr; } }
+  .card { border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .card h2 { font:600 11px ui-monospace, monospace; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); margin:0 0 8px; }
+  label.row { display:flex; gap:8px; align-items:center; margin:3px 0; font-family:ui-monospace, monospace; font-size:12.5px; }
+  .tag { font:600 10px ui-monospace, monospace; padding:1px 6px; border-radius:99px; border:1px solid var(--line); color:var(--mute); }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; min-height:24px; }
+  .chip { font:12px ui-monospace, monospace; background:var(--soft); padding:2px 8px; border-radius:99px; }
+  pre { margin:6px 0 0; padding:8px; background:var(--code); border-radius:6px; font:12px/1.5 ui-monospace, monospace; overflow-x:auto; }
+  .modes { margin-top:10px; display:grid; gap:4px; font-size:12.5px; }
+  select { font:inherit; font-size:12.5px; padding:3px 6px; background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; }
+  .ok { color:var(--ok); font-weight:600; } .bad { color:var(--bad); font-weight:600; }
+  .result { margin-top:8px; font-size:13px; }
+  .audit { font:12px ui-monospace, monospace; color:var(--mute); margin-top:4px; }
+  button { font:inherit; font-size:12.5px; padding:5px 11px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--fg); cursor:pointer; }
+  button:hover { border-color:var(--acc); }
+</style>
+</head>
+<body>
+<h1>Human, agent, downstream API</h1>
+<p class="sub">Alice ticks scopes, the agent asks to act for her, the IdP exchanges tokens, and the API checks what it is shown. Throwaway values only, nothing here is a real credential.</p>
+
+<div class="grid">
+  <div class="card">
+    <h2>1. What Alice holds (her token's scopes)</h2>
+    <div id="held"></div>
+    <h2 style="margin-top:12px">2. What the agent asks for</h2>
+    <div id="asked"></div>
+    <p class="sub" style="margin:8px 0 0">The agent is registered as trusted with <code>notes:read</code> only.</p>
+  </div>
+  <div class="card">
+    <h2>3. The token the IdP issues</h2>
+    <div class="chips" id="granted" aria-live="polite"></div>
+    <pre id="claims"></pre>
+    <div class="modes">
+      <label><input type="checkbox" id="bugScope"> starter behaviour: ignore what Alice holds</label>
+      <label><input type="checkbox" id="bugSub"> starter behaviour: make the agent the subject</label>
+      <label><input type="checkbox" id="bugCheck"> starter behaviour: downstream only checks "active"</label>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>4. What the API does with the token you present</h2>
+  <label>Present: <select id="present">
+    <option value="delegated">the delegated token (Alice, via the agent)</option>
+    <option value="agent">the agent's own token</option>
+    <option value="person">Alice's own token</option>
+  </select></label>
+  <div class="result" id="verdict" aria-live="polite"></div>
+  <div class="audit" id="audit"></div>
+  <p style="margin:10px 0 0"><button id="reset" type="button">Reset</button></p>
+</div>
+
+<script>
+const SCOPES = ["openid", "profile", "notes:read", "notes:write"];
+const DELEGABLE = new Set(["notes:read"]);
+const state = { held: new Set(["openid", "profile", "notes:read"]), asked: new Set(["notes:read"]) };
+const $ = (id) => document.getElementById(id);
+
+function grantedScopes() {
+  const asked = [...state.asked];
+  if ($("bugScope").checked) return asked.filter((s) => DELEGABLE.has(s));
+  return asked.filter((s) => state.held.has(s) && DELEGABLE.has(s));
+}
+function delegatedToken() {
+  const g = grantedScopes();
+  if (!g.length) return null;
+  return { sub: $("bugSub").checked ? "tidy-agent" : "idp-alice", scope: g, acting_as: $("bugSub").checked ? null : { sub: "tidy-agent", sponsor: "idp-alice" } };
+}
+function presented() {
+  const k = $("present").value;
+  if (k === "agent") return { sub: "tidy-agent", scope: ["stats:read"], acting_as: null };
+  if (k === "person") return { sub: "idp-alice", scope: [...state.held], acting_as: null };
+  return delegatedToken();
+}
+// The same four checks as delegated_token_allowed in the solution.
+function check(t) {
+  if (!t) return [false, "no token was issued: nothing was both held by Alice and delegable to the agent"];
+  if ($("bugCheck").checked) return [true, "token is active"];
+  if (!t.acting_as) return [false, "token is not delegated: it does not say which agent is acting for the person"];
+  if (t.sub === t.acting_as.sub) return [false, "token has no person behind the agent"];
+  if (!t.scope.includes("notes:read")) return [false, "insufficient_scope: needs 'notes:read'"];
+  return [true, "delegated token accepted"];
+}
+function box(group, name, set, locked) {
+  const l = document.createElement("label"); l.className = "row";
+  const i = document.createElement("input"); i.type = "checkbox"; i.checked = set.has(name); i.disabled = !!locked;
+  i.addEventListener("change", () => { i.checked ? set.add(name) : set.delete(name); render(); });
+  l.appendChild(i); l.appendChild(document.createTextNode(name));
+  if (group === $("asked") && !DELEGABLE.has(name)) { const t = document.createElement("span"); t.className = "tag"; t.textContent = "not delegable"; l.appendChild(t); }
+  group.appendChild(l);
+}
+function build() {
+  $("held").textContent = ""; $("asked").textContent = "";
+  SCOPES.forEach((n) => box($("held"), n, state.held, n === "openid"));
+  ["notes:read", "notes:write"].forEach((n) => box($("asked"), n, state.asked));
+}
+function render() {
+  const g = grantedScopes();
+  $("granted").textContent = ""; g.forEach((s) => { const c = document.createElement("span"); c.className = "chip"; c.textContent = s; $("granted").appendChild(c); });
+  if (!g.length) $("granted").textContent = "(no token: the exchange is refused)";
+  const t = delegatedToken();
+  $("claims").textContent = t ? JSON.stringify({ sub: t.sub, scope: t.scope.join(" "), acting_as: t.acting_as }, null, 2) : "";
+  const p = presented();
+  const [ok, reason] = check(p);
+  $("verdict").textContent = ""; const s = document.createElement("span"); s.className = ok ? "ok" : "bad";
+  s.textContent = (ok ? "200 allowed: " : "403 refused: ") + reason; $("verdict").appendChild(s);
+  const who = p && p.acting_as ? "agent:tidy-agent, on_behalf_of: " + p.sub : p ? "agent:tidy-agent, on_behalf_of: (none recorded)" : "";
+  $("audit").textContent = ok && p ? "audit row: " + who : ok ? "" : "audit row: deny recorded for the agent";
+}
+["bugScope","bugSub","bugCheck","present"].forEach((id) => $(id).addEventListener("change", render));
+$("reset").addEventListener("click", () => {
+  state.held = new Set(["openid", "profile", "notes:read"]); state.asked = new Set(["notes:read"]);
+  ["bugScope","bugSub","bugCheck"].forEach((id) => { $(id).checked = false; }); $("present").value = "delegated"; build(); render();
+});
+addEventListener("message", (e) => { if (e.data && e.data.type === "theme") document.documentElement.dataset.theme = e.data.scheme; });
+build(); render();
+</script>
+</body>
+</html>
