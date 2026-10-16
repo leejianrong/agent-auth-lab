@@ -20,3 +20,6 @@ site/
 
 # Editors / OS
 .DS_Store
+
+# Lab IdP signing keys (generated at run time)
+*-signing-key.pem
