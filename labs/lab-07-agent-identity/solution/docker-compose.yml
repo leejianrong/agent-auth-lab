@@ -1,0 +1,57 @@
+# Lab 06 and later run several services at once, so they get a compose file.
+# Every service still runs standalone with `uvicorn` / `npm run dev`, exactly
+# as in labs 04 and 05; compose is a convenience, not a requirement.
+#
+#   docker compose up --build                 # idp, backend, frontend
+#   docker compose run --rm digest            # run the digest job once
+#   docker compose run --rm digest python -m digest_service --secret wrong
+#   docker compose run --rm agent             # run the tidy agent once
+#   docker compose run --rm agent python -m agent_runner --ticks 3 --interval 5
+#
+# LAB ONLY (ADR-0008): fixed demo secrets, ports bound on all interfaces
+# inside the containers. Don't expose these anywhere real.
+
+services:
+  idp:
+    build:
+      context: ./idp
+      additional_contexts:
+        harness: ../../../shared/observability-harness/python
+    ports: ["9000:9000"]
+    environment:
+      LAB_IDP_ISSUER: http://localhost:9000
+
+  backend:
+    build:
+      context: ./backend
+      additional_contexts:
+        harness: ../../../shared/observability-harness/python
+    ports: ["8000:8000"]
+    environment:
+      LAB_IDP_URL: http://idp:9000            # server to server
+      LAB_IDP_PUBLIC_URL: http://localhost:9000   # what the browser and tokens use
+    depends_on: [idp]
+
+  frontend:
+    build:
+      context: ./frontend
+      additional_contexts:
+        harness_frontend: ../../../shared/observability-harness/frontend/src
+    ports: ["5173:5173"]
+    depends_on: [backend]
+
+  digest:
+    build: ./digest
+    profiles: ["jobs"]      # not started by `up`; run it on demand
+    environment:
+      LAB_IDP_URL: http://idp:9000
+      LAB_API_URL: http://backend:8000
+    depends_on: [idp, backend]
+
+  agent:
+    build: ./agent
+    profiles: ["jobs"]
+    environment:
+      LAB_IDP_URL: http://idp:9000
+      LAB_API_URL: http://backend:8000
+    depends_on: [idp, backend]

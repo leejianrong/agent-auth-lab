@@ -68,6 +68,7 @@ jobs:
           - lab-04-oidc
           - lab-05-consent-revocation
           - lab-06-service-to-service
+          - lab-07-agent-identity
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -93,6 +94,7 @@ jobs:
           - lab-04-oidc
           - lab-05-consent-revocation
           - lab-06-service-to-service
+          - lab-07-agent-identity
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -118,6 +120,7 @@ jobs:
           - lab-04-oidc
           - lab-05-consent-revocation
           - lab-06-service-to-service
+          - lab-07-agent-identity
         variant: [solution, starter]
     steps:
       - uses: actions/checkout@v7

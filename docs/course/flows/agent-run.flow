@@ -1,0 +1,52 @@
+actors: Agent runner | Lab IdP | This app
+
+step: The agent asks for a token as itself
+msg: Agent runner -> Lab IdP: POST /token, agent id + secret
+text: The agent has its own client id and secret, registered at the IdP like
+  lab 06's digest job. Nobody logs in for it. The runner is the program that
+  holds those credentials and carries out whatever the agent decides.
+
+step: The IdP records what kind of caller this is
+note: Lab IdP: adds type + sponsor
+text: The token will say `client_type: agent` and name a human `sponsor`, taken
+  from the registration. Those claims are how everything downstream can tell an
+  agent from a job, and find the person who answers for it.
+
+step: The token comes back short-lived
+msg: Lab IdP -> Agent runner: token, 2 min, 2 scopes
+text: Agent tokens live two minutes, against five for an ordinary service.
+  What an agent does next isn't fixed in advance, so a stolen token should
+  be worth less.
+
+step: The runner decides which tools the agent may even see
+note: Agent runner: offers matching tools
+text: The runner compares the token's scopes with its list of tools and offers
+  only the ones that match. An agent can only ask for tools it knows about,
+  so this is the first line of defence. The API is the second.
+
+step: The agent picks an action and the runner calls the app
+msg: Agent runner -> This app: GET /internal/stats + token
+text: The agent chose `get_stats`. The runner makes the call, attaching the
+  agent's bearer token. The agent itself never touches the credential.
+
+step: The app asks the IdP about the token
+msg: This app -> Lab IdP: POST /introspect
+text: Same introspection as labs 05 and 06. The app trusts nothing in the
+  request except what the IdP says about the token.
+
+step: The IdP says what kind of caller it is
+msg: Lab IdP -> This app: active + agent + sponsor
+text: Along with `active` and the scopes, the answer now carries `client_type`,
+  `client_name` and `sponsor`.
+
+step: The app files the call under the right identity
+note: This app: audit: agent for alice
+msg: This app -> Agent runner: 200 + the numbers
+text: The audit row says an agent did this, which agent, and who sponsors it.
+  Misfile it as a plain service and the dashboard has nothing to show.
+
+step: Minutes later, the runner refreshes before the token dies
+note: Agent runner: token near expiry
+text: The agent runs unattended, so no one is around to log in again. The
+  runner checks the clock before each call and fetches a new token while the
+  old one still has a little life left, instead of finding out from a 401.
