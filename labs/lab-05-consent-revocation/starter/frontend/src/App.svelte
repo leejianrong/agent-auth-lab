@@ -1,7 +1,7 @@
 <script lang="ts">
   import AuditDashboard from "@harness/AuditDashboard.svelte";
   import * as api from "./api";
-  import type { AdminUserRow, Note, NoteDecision, OidcTrace, SessionInfo, User, VerifyResult } from "./api";
+  import type { AdminUserRow, Note, NoteDecision, OidcTrace, SessionInfo, TokenInfo, User, VerifyResult } from "./api";
 
   let mode = $state<"login" | "signup">("login");
   let username = $state("");
@@ -33,15 +33,51 @@
   let traceResult = $state<NoteDecision | null>(null);
   let traceError = $state<string | null>(null);
 
+  // Lab 05: sessions that came from the IdP are only as alive as their
+  // access token. When the IdP says it's gone, the server ends the session
+  // and tells us why; show that instead of silently dropping to the login form.
+  let tokenInfo = $state<TokenInfo | null>(null);
+  let sessionEndedReason = $state<string | null>(null);
+  let revokeMessage = $state<string | null>(null);
+
+  async function refreshTokenInfo() {
+    try {
+      tokenInfo = await api.tokenMine();
+    } catch {
+      tokenInfo = null;
+    }
+  }
+
   async function refreshSession() {
     try {
       currentUser = await api.me();
       sessionInfo = await api.sessionsMine();
+      sessionEndedReason = null;
+      await refreshTokenInfo();
       await refreshMyNotes();
-    } catch {
+    } catch (e) {
+      const hadSession = currentUser !== null;
       currentUser = null;
       sessionInfo = null;
+      tokenInfo = null;
+      const msg = e instanceof Error ? e.message : "";
+      if (hadSession && msg.startsWith("session ended")) sessionEndedReason = msg;
     }
+  }
+
+  async function revokeToken() {
+    revokeMessage = null;
+    try {
+      await api.revokeMyToken();
+      revokeMessage = "Revoked at the IdP. This page hasn't noticed yet: make any request and see what happens.";
+    } catch (e) {
+      revokeMessage = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  async function poke() {
+    // Any authenticated request does: the server checks the token with the IdP each time.
+    await refreshSession();
   }
 
   async function submit() {
@@ -198,6 +234,14 @@
 <main>
   <h1>Lab 05 — Consent and revocation</h1>
 
+  {#if sessionEndedReason}
+    <section class="panel trace-bad">
+      <h2>Your session ended</h2>
+      <p class="decision-deny">{sessionEndedReason}</p>
+      <p class="hint">The audit log below has the matching deny row.</p>
+    </section>
+  {/if}
+
   {#if oidcTraceError}
     <section class="panel"><p class="error">Couldn't load the login trace: {oidcTraceError}</p></section>
   {/if}
@@ -242,6 +286,35 @@
       <h2>Signed in as {currentUser.username} <span class="role-badge">{currentUser.role}</span></h2>
       <button onclick={doLogout}>Log out</button>
     </section>
+
+    {#if tokenInfo?.federated}
+      <section class="panel">
+        <h2>Access token and grants</h2>
+        <p class="hint">
+          You signed in through the Lab IdP, so this session is backed by an access token. The server
+          asks the IdP whether it's still good on every request.
+        </p>
+        <p>
+          Scopes you shared:
+          {#each tokenInfo.scopes ?? [] as scope (scope)}
+            <span class="scope">{scope}</span>
+          {/each}
+        </p>
+        <p class="hint">
+          Token <code>{tokenInfo.jti_prefix}</code>, {tokenInfo.active ? "active" : "not active"}, expires
+          {tokenInfo.expires_at ? new Date(tokenInfo.expires_at * 1000).toLocaleTimeString() : "unknown"}.
+          If a scope is missing, you unticked it on the consent screen: try creating a note.
+        </p>
+        <div class="row">
+          <button onclick={refreshTokenInfo}>Introspect now</button>
+          <button onclick={revokeToken}>Revoke this token</button>
+          <button onclick={poke}>Make a request</button>
+        </div>
+        {#if revokeMessage}
+          <p class="hint">{revokeMessage}</p>
+        {/if}
+      </section>
+    {/if}
 
     <section class="panel">
       <h2>Admin panel — all users</h2>
@@ -587,6 +660,16 @@ payload: {JSON.stringify(decodedPayload, null, 2)}</pre>
     color: white;
     border-radius: 6px;
     text-decoration: none;
+  }
+  .scope {
+    display: inline-block;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    background: rgba(37, 99, 235, 0.12);
+    color: #1d4ed8;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    margin-right: 0.3rem;
   }
   .trace-ok { border-color: #146c2e; }
   .trace-bad { border-color: #b3261e; }

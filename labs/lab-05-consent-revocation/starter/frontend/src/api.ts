@@ -154,3 +154,18 @@ export interface OidcTrace {
 
 export const fetchOidcTrace = (traceId: string): Promise<OidcTrace> =>
   request(`/oidc/trace/${encodeURIComponent(traceId)}`);
+
+// --- lab 05: what the IdP says about this session's access token -----------
+
+export interface TokenInfo {
+  federated: boolean;
+  active?: boolean;
+  scopes?: string[];
+  expires_at?: number;
+  jti_prefix?: string;
+}
+
+export const tokenMine = (): Promise<TokenInfo> => request("/oidc/token/mine");
+
+export const revokeMyToken = (): Promise<{ revoked: boolean }> =>
+  request("/oidc/token/revoke", { method: "POST" });
