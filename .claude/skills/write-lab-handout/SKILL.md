@@ -123,6 +123,31 @@ exactly what a diagram should replace.
   can be generated or supplied separately. Never leave the spot as a bare
   placeholder.
 
+## Engagement components (labs 04 onward, ADR-0011)
+
+Labs 04+ use these on top of the structure above. Labs 00-03 predate them.
+Read `docs/research/handout-engagement.md` for the reasoning and
+`docs/course/spike-engaging-handouts.md` for a working example (reachable by
+URL, not in the nav).
+
+- **Stepper** for each multi-party flow: a `<div class="stepper" markdown>`
+  holding an inline-SVG `<figure class="stepper-diagram">` (no `markdown`
+  attribute on the figure, or `md_in_html` mangles the SVG) and one
+  `<div class="step" data-title="..." data-hl="id id">` per step. It counts
+  as the section's required diagram. Check the page still reads with
+  JavaScript off.
+- **Predict-then-reveal** before each observable outcome:
+  `??? question "What do you expect to happen?"`. The answer must not give
+  away the current lab's fix.
+- **Widget** (one per arc): a self-contained file in
+  `docs/course/widgets/`, embedded with
+  `<iframe class="widget-frame" src="../widgets/NAME.html" title="..." height="..." loading="lazy">`.
+  Place it beside the sentence it illustrates and give the learner a task.
+- **Layout**: first task within the first two screens. Put the previous-lab
+  walkthrough and long background in `???` folds.
+- When verifying, also click through every component in a browser, light and
+  dark.
+
 ## Verifying before you're done
 
 1. Build the docs site and confirm it's still clean:

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tamper with a JWT</title>
+<style>
+  :root { --bg:#fff; --fg:#1f2430; --mute:#667; --line:#d5d9e2; --h:#d6336c; --p:#7048e8; --s:#0c8599; --ok:#2b8a3e; --bad:#c92a2a; --code:#f4f5f9; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1e2129; --fg:#e6e8ee; --mute:#9aa; --line:#3a3f4c; --h:#ff8fb0; --p:#b197fc; --s:#66d9e8; --ok:#69db7c; --bad:#ff8787; --code:#272b35; } }
+  :root[data-theme="dark"] { --bg:#1e2129; --fg:#e6e8ee; --mute:#9aa; --line:#3a3f4c; --h:#ff8fb0; --p:#b197fc; --s:#66d9e8; --ok:#69db7c; --bad:#ff8787; --code:#272b35; }
+  :root[data-theme="light"] { --bg:#fff; --fg:#1f2430; --mute:#667; --line:#d5d9e2; --h:#d6336c; --p:#7048e8; --s:#0c8599; --ok:#2b8a3e; --bad:#c92a2a; --code:#f4f5f9; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:14px; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+  h1 { font-size:15px; margin:0 0 2px; } p.sub { margin:0 0 10px; color:var(--mute); font-size:12.5px; }
+  label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--mute); margin:10px 0 3px; }
+  textarea, input { width:100%; font:12.5px/1.4 ui-monospace, monospace; color:var(--fg); background:var(--code); border:1px solid var(--line); border-radius:6px; padding:7px 9px; }
+  textarea { resize:vertical; }
+  .token { font:12.5px/1.5 ui-monospace, monospace; word-break:break-all; background:var(--code); border:1px solid var(--line); border-radius:6px; padding:8px 10px; }
+  .h { color:var(--h); } .p { color:var(--p); } .s { color:var(--s); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  button { font:inherit; font-size:12.5px; padding:5px 11px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--fg); cursor:pointer; }
+  button:hover { border-color:var(--p); }
+  .verdict { margin-top:12px; padding:9px 12px; border-radius:6px; border:1px solid var(--line); font-weight:600; }
+  .verdict.ok { color:var(--ok); border-color:var(--ok); } .verdict.bad { color:var(--bad); border-color:var(--bad); }
+  .verdict small { display:block; font-weight:400; color:var(--fg); margin-top:2px; }
+  .err { color:var(--bad); font-size:12px; min-height:1.2em; }
+</style>
+</head>
+<body>
+<h1>Tamper with a JWT</h1>
+<p class="sub">Edit the payload and watch the signature stop matching. Everything runs in your browser (HS256, WebCrypto).</p>
+
+<label for="secret">Server's secret</label>
+<input id="secret" value="lab-secret-do-not-reuse" spellcheck="false">
+
+<label for="payload">Payload (JSON)</label>
+<textarea id="payload" rows="5" spellcheck="false">{
+  "sub": "alice",
+  "role": "user",
+  "exp": 4102444800
+}</textarea>
+<div class="err" id="err"></div>
+
+<label>Token</label>
+<div class="token" id="token" aria-live="polite"></div>
+
+<div class="row">
+  <button id="resign">Sign it properly (server does this)</button>
+  <button id="promote">Attacker: set role to admin, keep old signature</button>
+  <button id="flip">Attacker: flip one signature character</button>
+</div>
+
+<div class="verdict" id="verdict" role="status"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder();
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64uStr = (s) => b64u(enc.encode(s));
+const unb64uStr = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)));
+
+async function hmac(data) {
+  const key = await crypto.subtle.importKey("raw", enc.encode($("secret").value), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return b64u(await crypto.subtle.sign("HMAC", key, enc.encode(data)));
+}
+
+const header = b64uStr(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+let sig = ""; // the signature the "attacker" holds; may be stale
+
+function payloadB64() {
+  try { const o = JSON.parse($("payload").value); $("err").textContent = ""; return b64uStr(JSON.stringify(o)); }
+  catch (e) { $("err").textContent = "Payload isn't valid JSON yet."; return null; }
+}
+
+async function render() {
+  const p = payloadB64();
+  if (p === null) return;
+  $("token").innerHTML = `<span class="h">${header}</span>.<span class="p">${p}</span>.<span class="s">${sig || "(none)"}</span>`;
+  const good = await hmac(`${header}.${p}`);
+  const v = $("verdict");
+  if (sig === good) {
+    v.className = "verdict ok";
+    v.innerHTML = `Accepted<small>Signature matches header + payload under the server's secret.</small>`;
+  } else {
+    v.className = "verdict bad";
+    v.innerHTML = `Rejected: bad signature<small>Recomputed signature is <code>${good.slice(0, 12)}...</code>, token carries <code>${(sig || "none").slice(0, 12)}...</code>. An attacker without the secret can't produce the first one.</small>`;
+  }
+}
+
+async function resign() { const p = payloadB64(); if (p === null) return; sig = await hmac(`${header}.${p}`); render(); }
+
+$("payload").addEventListener("input", render);
+$("secret").addEventListener("input", render);
+$("resign").addEventListener("click", resign);
+$("promote").addEventListener("click", () => {
+  try { const o = JSON.parse($("payload").value); o.role = "admin"; $("payload").value = JSON.stringify(o, null, 2); } catch {}
+  render();
+});
+$("flip").addEventListener("click", () => {
+  if (!sig) return;
+  const i = Math.floor(sig.length / 2);
+  sig = sig.slice(0, i) + (sig[i] === "A" ? "B" : "A") + sig.slice(i + 1);
+  render();
+});
+
+// Follow the parent page's theme toggle if embedded in the docs site.
+addEventListener("message", (e) => {
+  if (e.data && e.data.type === "theme") document.documentElement.dataset.theme = e.data.scheme;
+});
+resign();
+</script>
+</body>
+</html>
