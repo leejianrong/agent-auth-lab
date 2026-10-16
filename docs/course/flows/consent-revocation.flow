@@ -1,0 +1,53 @@
+actors: Browser | Client app | Lab IdP
+
+step: The user signs in at the IdP
+msg: Browser -> Lab IdP: username + password
+text: Same as lab 04: the password goes to the IdP and nowhere else. What's new
+  is what happens next.
+
+step: The IdP asks what the app may do
+msg: Lab IdP -> Browser: consent screen
+note: Lab IdP: checks saved consent
+text: The app asked for four scopes. The IdP compares them with what this user
+  has already agreed to share with this app. Anything new means a consent
+  screen. A user who has already agreed to everything skips it.
+
+step: The user decides, scope by scope
+msg: Browser -> Lab IdP: ticked boxes only
+note: Lab IdP: grants only ticked
+text: Each box is a scope. The IdP keeps only the ones that were requested,
+  known and ticked. Whatever it keeps goes into the access token, so this
+  is the moment a permission is given or withheld.
+
+step: The scopes travel inside the token
+msg: Lab IdP -> Client app: access token + scope
+text: After the usual code and PKCE exchange, the app receives an access
+  token. Its `scope` claim lists exactly what the user agreed to. The app
+  never gets to widen that list.
+
+step: The app checks the token on every request
+msg: Client app -> Lab IdP: POST /introspect
+text: The token is a signed JWT, so the app could just verify it locally. It
+  asks the IdP instead, because only the IdP knows whether the token was
+  revoked after it was signed.
+
+step: The IdP answers with the live state
+msg: Lab IdP -> Client app: active + scopes
+text: An active token comes back with its scopes, and the app checks the
+  route's required scope against them. This round trip is the price of being
+  able to revoke.
+
+step: The user revokes the token
+msg: Client app -> Lab IdP: POST /revoke
+note: Lab IdP: remembers the jti
+text: Revocation writes the token's `jti` (its unique id) to a list. The token
+  itself still verifies and hasn't expired. Nothing about it changed.
+
+step: The next request finds the token dead
+msg: Client app -> Lab IdP: POST /introspect
+text: The app asks again, exactly as it does on every request.
+
+step: The IdP says the token is no longer active
+msg: Lab IdP -> Client app: active = false
+text: The app ends the session and records a deny in the audit log. Revocation
+  took effect within one request, with no waiting for the token to expire.
