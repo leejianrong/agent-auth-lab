@@ -9,6 +9,7 @@ later labs don't need a schema migration.
 import json
 import sqlite3
 import secrets
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 
@@ -59,6 +60,10 @@ class AuditLog:
 
     def __init__(self, db_path: str):
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        # FastAPI runs sync routes on a thread pool, so one request can write
+        # while another reads. A single sqlite3 connection must not be used by
+        # two threads at once, hence the lock around every use of it.
+        self._lock = threading.Lock()
         self._conn.execute(_SCHEMA)
         self._conn.commit()
 
@@ -89,35 +94,37 @@ class AuditLog:
             reason=reason,
             metadata=metadata or {},
         )
-        self._conn.execute(
-            """INSERT INTO audit_events
-               (id, ts, trace_id, span_id, actor_type, actor_id, action,
-                resource, decision, reason, metadata_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                event.id,
-                event.ts,
-                event.trace_id,
-                event.span_id,
-                event.actor_type,
-                event.actor_id,
-                event.action,
-                event.resource,
-                event.decision,
-                event.reason,
-                json.dumps(event.metadata),
-            ),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO audit_events
+                   (id, ts, trace_id, span_id, actor_type, actor_id, action,
+                    resource, decision, reason, metadata_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    event.id,
+                    event.ts,
+                    event.trace_id,
+                    event.span_id,
+                    event.actor_type,
+                    event.actor_id,
+                    event.action,
+                    event.resource,
+                    event.decision,
+                    event.reason,
+                    json.dumps(event.metadata),
+                ),
+            )
+            self._conn.commit()
         return event
 
     def recent(self, limit: int = 100) -> list[AuditEvent]:
-        rows = self._conn.execute(
-            "SELECT id, ts, trace_id, span_id, actor_type, actor_id, action, "
-            "resource, decision, reason, metadata_json "
-            "FROM audit_events ORDER BY ts DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, ts, trace_id, span_id, actor_type, actor_id, action, "
+                "resource, decision, reason, metadata_json "
+                "FROM audit_events ORDER BY ts DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
         return [
             AuditEvent(
                 id=r[0],
