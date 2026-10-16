@@ -38,6 +38,23 @@ jobs:
             python3 scripts/generate_starter.py --check "${lab%/}"
           done
 
+  stepper-generator:
+    name: Stepper generator tests and generated blocks are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - run: pytest scripts/tests -v
+      - name: Every page's stepper blocks match their .flow files
+        run: |
+          set -e
+          for page in $(grep -l '<!-- stepper:' docs/course/*.md); do
+            python3 scripts/stepper_gen.py --check "$page"
+          done
+
   backend-solution-tests:
     name: Backend solution self-checks (must all pass)
     runs-on: ubuntu-latest

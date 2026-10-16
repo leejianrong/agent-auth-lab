@@ -130,12 +130,15 @@ Read `docs/research/handout-engagement.md` for the reasoning and
 `docs/course/spike-engaging-handouts.md` for a working example (reachable by
 URL, not in the nav).
 
-- **Stepper** for each multi-party flow: a `<div class="stepper" markdown>`
-  holding an inline-SVG `<figure class="stepper-diagram">` (no `markdown`
-  attribute on the figure, or `md_in_html` mangles the SVG) and one
-  `<div class="step" data-title="..." data-hl="id id">` per step. It counts
-  as the section's required diagram. Check the page still reads with
-  JavaScript off.
+- **Stepper** for each multi-party flow. Never hand-write the SVG. Describe
+  the sequence in `docs/course/flows/NAME.flow` (see
+  `docs/course/flows/pkce.flow`, format in `scripts/stepper_gen.py`'s
+  docstring), put `<!-- stepper: flows/NAME.flow -->` then
+  `<!-- /stepper -->` in the handout, and run
+  `python3 scripts/stepper_gen.py --inject docs/course/lab-NN-slug.md`. CI
+  fails if the generated block is stale. A stepper counts as the section's
+  required diagram. Keep message labels short (the generator rejects ones
+  that don't fit) and check the page still reads with JavaScript off.
 - **Predict-then-reveal** before each observable outcome:
   `??? question "What do you expect to happen?"`. The answer must not give
   away the current lab's fix.

@@ -1,4 +1,4 @@
-.PHONY: lab00-setup lab00-test lab00-run lab01-setup lab01-test lab01-run docs-serve docs-build generate-starters check-starters
+.PHONY: stepper-test stepper-check lab00-setup lab00-test lab00-run lab01-setup lab01-test lab01-run docs-serve docs-build generate-starters check-starters
 
 lab00-setup:
 	cd labs/lab-00-sessions-cookies/starter/backend && \
@@ -49,3 +49,9 @@ generate-starters:
 
 check-starters:
 	for lab in labs/*/; do python3 scripts/generate_starter.py --check "$${lab%/}"; done
+
+stepper-test:
+	python3 -m pytest scripts/tests -v
+
+stepper-check:
+	@for page in $$(grep -l '<!-- stepper:' docs/course/*.md); do python3 scripts/stepper_gen.py --check $$page; done
