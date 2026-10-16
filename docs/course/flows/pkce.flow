@@ -1,0 +1,46 @@
+actors: Browser | Client app | Lab IdP
+
+step: The user asks to log in
+msg: Browser -> Client app: click "Log in"
+text: The user clicks "Log in" on the client app. At this point the app knows
+  nothing about them, and it never will see their password.
+
+step: The app invents a secret and shows only its fingerprint
+msg: Client app -> Browser: redirect + code_challenge
+note: Client app: keeps code_verifier secret
+text: The app generates a random `code_verifier`, hashes it into a
+  `code_challenge`, and redirects the browser to the IdP carrying only the
+  challenge. The verifier stays on the app's side.
+
+  Notice that someone who intercepts this redirect learns the hash, not the
+  secret.
+
+step: The browser carries the request to the IdP
+msg: Browser -> Lab IdP: GET /authorize?code_challenge=...
+note: Lab IdP: stores code_challenge
+text: The IdP stores the challenge next to the pending request. It will compare
+  it against whatever shows up at the token endpoint later.
+
+step: The user authenticates at the IdP, not the app
+msg: Lab IdP -> Browser: login + consent, redirect with ?code=
+text: Login and consent happen on the IdP's own pages. The IdP then redirects
+  back with a short-lived, single-use `code`. A code on its own is useless;
+  that is the point of the next two steps.
+
+step: The code lands on the app's callback
+msg: Browser -> Client app: GET /callback?code=...
+text: The code travelled through the browser, so treat it as exposed. If an
+  attacker grabbed it here, what would stop them from redeeming it?
+
+step: The app proves it started the flow
+msg: Client app -> Lab IdP: POST /token (code + verifier)
+text: The app posts the code together with the original `code_verifier`. The IdP
+  hashes the verifier and compares it with the stored challenge. A thief with
+  only the code fails this check, which is exactly the lab's PKCE-mismatch
+  rejection.
+
+step: Tokens come back over the direct channel
+msg: Lab IdP -> Client app: ID token + access token
+text: Tokens only ever travel on the app-to-IdP request, never through the
+  browser's address bar. Open the trace panel and find these seven messages
+  in the live trace.
