@@ -67,6 +67,7 @@ jobs:
           - lab-03-abac-rebac
           - lab-04-oidc
           - lab-05-consent-revocation
+          - lab-06-service-to-service
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -91,6 +92,7 @@ jobs:
           - lab-03-abac-rebac
           - lab-04-oidc
           - lab-05-consent-revocation
+          - lab-06-service-to-service
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -115,6 +117,7 @@ jobs:
           - lab-03-abac-rebac
           - lab-04-oidc
           - lab-05-consent-revocation
+          - lab-06-service-to-service
         variant: [solution, starter]
     steps:
       - uses: actions/checkout@v7
