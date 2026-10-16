@@ -1,0 +1,53 @@
+actors: Alice | This app | Agent runner | Lab IdP
+
+step: Alice asks the agent to do something for her
+msg: Alice -> This app: ask the agent
+note: This app: stores task + trace id
+text: Alice is signed in through the Lab IdP, so her session has an access
+  token. The app queues a task, remembers her token with it and notes the trace
+  id, which will follow the whole job.
+
+step: The agent claims the task as itself
+msg: Agent runner -> This app: claim a task
+text: The runner uses its own token for this, the same client credentials as
+  lab 07. Only an agent acting as itself may claim tasks.
+
+step: The app hands over the task and Alice's token
+msg: This app -> Agent runner: task + her token
+text: Alice's token is lent for this one task. The agent never sees her
+  password or her session, and it can't use her token for anything the IdP
+  hasn't agreed to.
+
+step: The agent trades her token for a delegated one
+msg: Agent runner -> Lab IdP: exchange tokens
+text: This is the token exchange. The runner sends its own credentials and
+  Alice's token, and asks for the scopes it needs.
+
+step: The IdP narrows the scopes and names both of them
+note: Lab IdP: requested, held, delegable
+text: The scopes granted are the overlap of three lists: what the agent asked
+  for, what Alice holds, and what this agent is ever trusted with. The new token
+  keeps `sub` as Alice and adds `acting_as` for the agent.
+
+step: The delegated token comes back, short-lived
+msg: Lab IdP -> Agent runner: delegated token
+text: It expires in two minutes, or sooner if Alice's own token does. A
+  delegation can't outlive the authority behind it.
+
+step: The agent calls the downstream API for Alice
+msg: Agent runner -> This app: read notes + token
+text: The tool `read_notes` is marked as delegated, so the runner attaches
+  the delegated token. The report it writes afterwards uses the agent's own
+  token instead.
+
+step: The API checks that a person and an agent are both in the token
+msg: This app -> Lab IdP: POST /introspect
+note: This app: accepts delegated only
+text: A person's own token has no agent in it. An agent's own token has no
+  person in it. Neither belongs here, however valid it is.
+
+step: The audit row names both identities, and the trace ties them together
+msg: This app -> Agent runner: Alice's notes
+note: This app: audit: agent for alice
+text: The row says `agent:tidy-agent` acting `on_behalf_of: idp-alice`, and
+  carries the same trace id as the request, the exchange and the read.

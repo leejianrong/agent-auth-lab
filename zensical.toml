@@ -22,6 +22,7 @@ nav = [
   { "Lab 06: service-to-service" = "lab-06-service-to-service.md" },
   { "Lab 07: agent identity" = "lab-07-agent-identity.md" },
   { "Lab 08: scoped tools and OPA" = "lab-08-opa-tool-scopes.md" },
+  { "Lab 09: acting on behalf of a person" = "lab-09-on-behalf-of.md" },
 ]
 
 [project.theme]
