@@ -1,0 +1,47 @@
+actors: Agent runner | Lab IdP | This app | OPA
+
+step: The agent asks for a token with the scopes it needs
+msg: Agent runner -> Lab IdP: POST /token, scopes
+text: Same client credentials as lab 07. The agent asks for `stats:read` and
+  `reports:write`, and the IdP only grants what it was registered for.
+
+step: The IdP writes the allowed actions into the token
+note: Lab IdP: adds capabilities
+msg: Lab IdP -> Agent runner: token + actions
+text: Each capability names one tool and any limits on it, and is only included
+  when its scope was granted. Ask for fewer scopes and you carry fewer
+  capabilities.
+
+step: The runner sends a tool call to one door
+msg: Agent runner -> This app: POST /agent/tools/write_report
+text: Lab 07 had a route per tool. Now every tool goes through the gateway,
+  with the arguments in the body. That gives the policy one place to look.
+
+step: The app asks the IdP what the token says
+msg: This app -> Lab IdP: POST /introspect
+text: The app trusts nothing in the request except the token, and only through
+  the IdP's answer. The capabilities come back from here, not from the caller.
+
+step: The app builds a question for OPA
+msg: Lab IdP -> This app: active + grants
+note: This app: builds input
+text: The input holds who is asking, what the token allows and which tool is
+  being called with which arguments. Only the tool and its arguments come
+  from the request.
+
+step: OPA evaluates the Rego policy
+msg: This app -> OPA: POST /decision
+note: OPA: runs the rules
+text: Every rule that objects adds a named entry to `deny`. One entry is
+  enough to block the call, whatever else would have allowed it.
+
+step: OPA answers with the policies that decided
+msg: OPA -> This app: allow/deny + names
+text: The answer lists the policy names, such as `report-too-long`, not just
+  yes or no. If the app can't read a clear yes, it treats the answer as no.
+
+step: The app records the decision and then acts on it
+note: This app: audit with policy name
+msg: This app -> Agent runner: 200, or 403 + policy
+text: The audit row carries the denying policy, so "why was it refused" has a
+  one-line answer. Only on an allow does the tool actually run.

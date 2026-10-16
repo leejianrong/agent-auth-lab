@@ -66,7 +66,7 @@ SKIP_DIR_NAMES = {
 # (or, if binary and unreadable as text, copied verbatim via the fallback).
 TEXT_EXTENSIONS = {
     ".py", ".js", ".ts", ".svelte", ".html", ".css", ".json", ".md",
-    ".toml", ".cfg", ".ini", ".yml", ".yaml", ".txt", ".sh",
+    ".toml", ".cfg", ".ini", ".yml", ".yaml", ".txt", ".sh", ".rego",
 }
 
 
