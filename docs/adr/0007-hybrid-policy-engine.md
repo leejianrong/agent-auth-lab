@@ -39,3 +39,13 @@ enough to benefit from a real policy language (Rego).
 - If OPA proves too heavy for the target audience at that point, lab 08
   falls back to an extended hand-rolled evaluator instead — a decision
   deferred to when that slice is actually built and reviewed.
+
+## Outcome (lab 08, 2026-10-16)
+
+OPA stayed. Lab 08 runs it as a sidecar with no fallback to a hand-rolled
+evaluator. The deciding facts: it is one static binary of about 64 MB with
+nothing to install, there is an official container image for the compose
+file, the self-check starts a real server in-process-tree on a free port, and
+CI downloads a pinned release in a few seconds. Rego was the real cost. Lab
+08 keeps it small (one helper set, three `deny` rules, a `decision` that names
+every objecting policy) and has the learner write exactly one rule.

@@ -21,6 +21,7 @@ nav = [
   { "Lab 05: consent and revocation" = "lab-05-consent-revocation.md" },
   { "Lab 06: service-to-service" = "lab-06-service-to-service.md" },
   { "Lab 07: agent identity" = "lab-07-agent-identity.md" },
+  { "Lab 08: scoped tools and OPA" = "lab-08-opa-tool-scopes.md" },
 ]
 
 [project.theme]
