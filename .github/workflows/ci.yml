@@ -71,6 +71,7 @@ jobs:
           - lab-07-agent-identity
           - lab-08-opa-tool-scopes
           - lab-09-on-behalf-of
+          - lab-10-approval-gate
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -105,6 +106,7 @@ jobs:
           - lab-07-agent-identity
           - lab-08-opa-tool-scopes
           - lab-09-on-behalf-of
+          - lab-10-approval-gate
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -133,6 +135,7 @@ jobs:
           - lab-07-agent-identity
           - lab-08-opa-tool-scopes
           - lab-09-on-behalf-of
+          - lab-10-approval-gate
         variant: [solution, starter]
     steps:
       - uses: actions/checkout@v7
