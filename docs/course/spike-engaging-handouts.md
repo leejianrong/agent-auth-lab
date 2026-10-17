@@ -5,7 +5,7 @@ icon: lucide/sparkles
 # Spike: engaging handouts (draft)
 
 This page is a prototype for the AAL-11 spike. It is not a lab. It shows
-three components we could use in every handout from lab 04 on: a clickthrough
+three components that every handout now uses: a clickthrough
 that animates a diagram, an embedded widget you can break on purpose, and a
 predict-then-reveal check. The write-up with the reasoning lives in
 `docs/research/handout-engagement.md`.

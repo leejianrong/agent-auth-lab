@@ -25,3 +25,6 @@ site/
 
 # Lab IdP signing keys (generated at run time)
 *-signing-key.pem
+
+# Docs venv created by `make docs-serve` / `make docs-build`
+.docs-venv/

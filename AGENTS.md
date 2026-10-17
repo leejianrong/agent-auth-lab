@@ -55,9 +55,15 @@ what's assumed, what's deferred).
   `write-lab-handout` project skill.** It covers handout structure (closing
   the loop on the previous lab before introducing the next one), the
   no-spoilers rule, and diagram requirements (ADR-0010).
-- Labs 04 onward use the engagement components in ADR-0011 (generated
-  steppers, predict-then-reveal folds, per-arc widgets, folded
-  previous-lab walkthrough). The `write-lab-handout` skill has the how.
+- Every handout (labs 00-13) uses the engagement components in ADR-0011
+  (generated steppers, predict-then-reveal folds, per-arc widgets, folded
+  previous-lab walkthrough). Stepper sources live in `docs/course/flows/`,
+  widgets in `docs/course/widgets/`. The `write-lab-handout` skill has the how.
+- Handout code excerpts are extracted from the real starter/solution file
+  (strip the `LAB:` markers), never retyped. The current lab's sections show
+  the starter side only. Check built HTML for solution-only lines before merging.
+- A handout's "run it" steps run against the **starter**, so they must describe
+  what the starter does (usually the bug), not the fixed behaviour.
 - Every lab's observable outcome (a UI panel, a denied request, a trace)
   should be named explicitly in its handout — this course teaches by
   watching something happen, not by reading about it.
@@ -81,7 +87,13 @@ what's assumed, what's deferred).
 - Regenerate a handout's stepper blocks:
   `python3 scripts/stepper_gen.py --inject docs/course/lab-NN-slug.md`
   (`--check` in CI). Never hand-write stepper SVG.
-- Docs build: `zensical build --clean --strict` must be clean. Zensical is
-  not in any lab venv; install it separately.
+- Docs build: `make docs-build` (`zensical build --clean --strict`) must be
+  clean. Zensical is not in any lab venv; the Makefile installs it into
+  `.docs-venv`. `make stepper-check` verifies every generated stepper.
+- Screenshots and browser checks use Playwright installed in a scratch dir,
+  never the repo. Ports 8000, 5173, 9000 and 8181 must be free first; free them
+  with `ss -ltnp` and `kill -9 <pid>`, never `pkill -f`. Delete `*.db*`, `*.pem`
+  and `dist` before running `generate_starter.py` or committing, since the
+  generator copies them.
 - Merge PRs once CI is green. Don't commit unrelated working-tree files
   (check `git status` first).
