@@ -1,0 +1,53 @@
+actors: Agent runner | This app | OPA | Alice
+
+step: The agent asks to delete old reports
+msg: Agent runner -> This app: purge_reports
+text: The runner makes the call with the agent's own token, like any other
+  tool. Nothing about the request says it is special.
+
+step: The gateway asks the policy
+msg: This app -> OPA: may it?
+text: Same question as lab 08, same document: the agent, the capabilities on
+  its token and the tool with its arguments.
+
+step: The policy says yes, and flags it
+msg: OPA -> This app: allow + approval
+note: OPA: capability says approval
+text: The capability for `purge_reports` carries `"approval": "required"`.
+  The policy copies that into its answer as `requires_approval`. It has not
+  said "run it". It has said "run it once a person agrees".
+
+step: The app queues a request and answers 202
+msg: This app -> Agent runner: 202 pending
+note: This app: request + trace id kept
+text: The row records the agent, its sponsor, the tool and a fingerprint of the
+  exact arguments. Nothing has been deleted.
+
+step: The agent waits and asks how it is getting on
+msg: Agent runner -> This app: poll the request
+text: The runner polls once a second. While the request is pending the answer
+  holds no token.
+
+step: Alice sees the request in the queue and approves it
+msg: Alice -> This app: approve
+note: This app: may_decide, then a 60s token
+text: Alice is the agent's sponsor, so she is allowed to decide. Approving
+  mints a token that lives for a minute. The queue never shows it.
+
+step: The next poll hands the agent its token
+msg: This app -> Agent runner: approval token
+text: Only the agent that asked can collect it. A denial would have come back
+  here too, with no token.
+
+step: The agent repeats the call with the token
+msg: Agent runner -> This app: purge + token
+note: This app: token tied to this call
+text: The call carries the approval id and token. The app checks that the token
+  is live and belongs to this agent, this tool and these arguments, then spends
+  it.
+
+step: The work runs, and the audit log tells the whole story
+msg: This app -> Agent runner: deleted 3
+note: This app: held, approved, run
+text: One trace id covers the first request, Alice's decision and the run. Spent
+  tokens are wiped, so the same approval can't be used twice.
