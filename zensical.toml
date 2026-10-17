@@ -26,6 +26,7 @@ nav = [
   { "Lab 10: a person approves the elevated action" = "lab-10-approval-gate.md" },
   { "Lab 11: the confused deputy" = "lab-11-confused-deputy.md" },
   { "Lab 12: one trace, one kill-switch" = "lab-12-audit-killswitch.md" },
+  { "Lab 13: the capstone" = "lab-13-capstone.md" },
 ]
 
 [project.theme]
