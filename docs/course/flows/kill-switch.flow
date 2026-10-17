@@ -1,0 +1,42 @@
+actors: Operator | This app | Lab IdP | Archive agent
+
+step: An archive job is in flight, and the operator is watching its trace
+msg: Operator -> This app: open the trace
+text: One trace id covers the request, the token exchange, the hand-off and every
+  call so far, from both services. The tidy agent has already passed the filing
+  on, and the archive agent is part way through it.
+
+step: The operator hits the switch for the first agent
+msg: Operator -> This app: cut off tidy-agent
+note: This app: may_decide? admin or sponsor
+text: Only an admin or that agent's sponsor may do this. The request carries the
+  trace id the operator is looking at, so the cut-off lands in the same story.
+
+step: The app asks the IdP to stop honouring it
+msg: This app -> Lab IdP: cut off, by whom
+note: Lab IdP: client marked cut off
+text: The IdP records the client as cut off, with who did it and why. From now on
+  it issues that agent no token and accepts it as no one's delegate.
+
+step: The app ends what the agent left waiting
+note: This app: approvals, tasks, hand-offs
+text: Pending approvals, claimed tasks and unfinished hand-offs belonging to the
+  agent are ended and their tokens wiped, so nobody can approve a request from
+  an agent that no longer exists.
+
+step: The archive agent makes its next call
+msg: Archive agent -> This app: read notes
+text: Its token was made for it, not for the tidy agent, but it came through the
+  tidy agent. The API asks the IdP whether it is active, as it does on every call.
+
+step: The IdP looks at the whole history of the token
+msg: This app -> Lab IdP: POST /introspect
+note: Lab IdP: via tidy-agent, cut off
+text: The check is made fresh, and it covers the client the token was issued to,
+  the agent acting, and every agent in `via`. One of them is cut off.
+
+step: The next action is refused, and the trace shows who stopped it
+msg: This app -> Archive agent: 401 not active
+note: This app: audit: refused
+text: One request cycle after the switch, the chain stops. The same timeline now
+  has the operator's cut-off, the IdP's record of it, and the refusal.

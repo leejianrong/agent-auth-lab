@@ -73,6 +73,7 @@ jobs:
           - lab-09-on-behalf-of
           - lab-10-approval-gate
           - lab-11-confused-deputy
+          - lab-12-audit-killswitch
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -109,6 +110,7 @@ jobs:
           - lab-09-on-behalf-of
           - lab-10-approval-gate
           - lab-11-confused-deputy
+          - lab-12-audit-killswitch
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -139,6 +141,7 @@ jobs:
           - lab-09-on-behalf-of
           - lab-10-approval-gate
           - lab-11-confused-deputy
+          - lab-12-audit-killswitch
         variant: [solution, starter]
     steps:
       - uses: actions/checkout@v7
