@@ -1,0 +1,54 @@
+actors: Tidy agent | Lab IdP | This app | Archive agent
+
+step: The first agent holds a broad token for Alice
+msg: Tidy agent -> This app: read notes
+text: This is lab 09's delegated token, and the agent asked for everything it is
+  allowed to hold on an archive job: `notes:read` and `notes:write`. Its report
+  and the read both run on it.
+
+step: It asks the IdP to pass part of the work on
+msg: Tidy agent -> Lab IdP: hand off, read only
+text: The agent sends its delegated token as the subject, names `archive-agent`
+  as the audience, and re-grants one scope on purpose: `notes:read`.
+
+step: The IdP decides who may pass what to whom
+note: Lab IdP: may pass? what scopes?
+text: Two checks. Is this the agent the token was issued to, and is the target
+  one it is registered to hand work to? Then the scopes: held by the giver,
+  re-granted by it, and within what the receiver is ever trusted with.
+
+step: The second agent gets a token of its own
+msg: Lab IdP -> Tidy agent: token for archive
+note: Lab IdP: sub alice, via tidy
+text: Alice is still `sub`. `client_id` is the archive agent, `acting_as` names it
+  too, and `via` records the agent the authority came through. The token cannot
+  outlive the one it came from.
+
+step: The first agent leaves it for the second
+msg: Tidy agent -> This app: leave the token
+text: The task is finished from the first agent's side. Its own delegated token
+  is discarded with the task.
+
+step: The second agent collects only what is addressed to it
+msg: Archive agent -> This app: claim hand-off
+note: This app: only the addressee
+text: The archive agent authenticates as itself. It sees hand-offs made out to
+  `archive-agent` and no others.
+
+step: It reads the notes and finds an instruction in a title
+msg: Archive agent -> This app: read notes
+note: Archive agent: title says delete
+text: One of Alice's notes has a title that reads like an order. This agent
+  obeys what it reads, which is how a language model fails too.
+
+step: It tries to delete a note
+msg: Archive agent -> This app: DELETE note
+note: This app: needs notes:write
+text: The API introspects the token. Deleting needs `notes:write`, and this is
+  the second agent's token, not the first agent's.
+
+step: The API refuses, and the audit log names who reached too far
+msg: This app -> Archive agent: 403 scope
+note: This app: violation, via tidy
+text: The row says `agent:archive-agent`, on behalf of `idp-alice`, via
+  `tidy-agent`, flagged as a scope violation. Nothing was deleted.
