@@ -125,7 +125,7 @@ exactly what a diagram should replace.
 
 ## Engagement components (labs 04 onward, ADR-0011)
 
-Labs 04+ use these on top of the structure above. Labs 00-03 predate them.
+Every lab (00-13) uses these on top of the structure above.
 Read `docs/research/handout-engagement.md` for the reasoning and
 `docs/course/spike-engaging-handouts.md` for a working example (reachable by
 URL, not in the nav).
