@@ -81,3 +81,14 @@ rules.
 - ADR-0010 rule 2 now reads "at least one diagram per background section,
   and a stepper satisfies it". Rule 3 now reads "opens with the previous
   lab's walkthrough, collapsed by default".
+
+## Note, 2026-10-17: retrofit of labs 00-03 done before the real-learner test
+
+Decision 6 said labs 00-03 would be retrofitted only after one person worked lab
+02 start to finish (AAL-15). That test has not happened, because it needs a
+person and none was available. The user chose to go ahead with the retrofit
+(AAL-17) anyway. Labs 00-03 now carry the same components as lab 04 onward:
+generated steppers, a predict-then-reveal fold before each observable outcome,
+the JWT tamper widget in lab 01, and collapsed previous-lab walkthroughs. The
+test is still wanted, and what it finds may change all of them, labs 04-13
+included. AAL-15 stays open.
