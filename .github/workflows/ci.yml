@@ -74,6 +74,7 @@ jobs:
           - lab-10-approval-gate
           - lab-11-confused-deputy
           - lab-12-audit-killswitch
+          - lab-13-capstone
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -111,6 +112,7 @@ jobs:
           - lab-10-approval-gate
           - lab-11-confused-deputy
           - lab-12-audit-killswitch
+          - lab-13-capstone
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -142,6 +144,7 @@ jobs:
           - lab-10-approval-gate
           - lab-11-confused-deputy
           - lab-12-audit-killswitch
+          - lab-13-capstone
         variant: [solution, starter]
     steps:
       - uses: actions/checkout@v7

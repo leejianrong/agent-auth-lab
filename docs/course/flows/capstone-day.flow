@@ -1,0 +1,54 @@
+actors: Alice | Agents | Platform | Operator
+
+step: Alice asks the agents to archive her notes
+msg: Alice -> Platform: archive my notes
+note: Platform: task + trace id
+text: She is signed in through the IdP, so her session has an access token, and the
+  request gets a trace id that will follow the whole job (labs 04, 05 and 09).
+
+step: The first agent claims the job and trades her token
+msg: Agents -> Platform: claim + exchange
+note: Platform: delegated, read + write
+text: It authenticates as itself with client credentials (lab 06), and gets a token
+  that names Alice and the agent, narrowed to what both may hold (lab 09).
+
+step: It hands the filing to a second agent
+msg: Agents -> Platform: hand off, read only
+note: Platform: new token per hop
+text: The second agent has its own identity and sponsor. It receives a token of its
+  own with only the scope that was passed on, and the route it came by (lab 11).
+
+step: The second agent reads the notes and ignores an order hidden in one
+msg: Agents -> Platform: read notes
+note: Platform: delete not allowed
+text: A note's title tells it to delete another note. It tries, and the API refuses
+  because the token never held the scope. The refusal is flagged in the log.
+
+step: The first agent asks to do something irreversible
+msg: Agents -> Platform: purge old reports
+note: Platform: policy: needs approval
+text: Policy allows the tool and also says a person has to agree (labs 08 and 10).
+  The call is held as a request and the agent waits.
+
+step: A person decides
+msg: Alice -> Platform: approve
+note: Platform: one-minute token
+text: Alice is the agent's sponsor, so she may decide. The approval is tied to this
+  agent, this tool and these arguments, and it works once.
+
+step: The agent repeats the call and it runs
+msg: Platform -> Agents: token, then done
+text: The token is spent and the reports are deleted. Everything so far is in the
+  audit log under one trace id.
+
+step: The operator reads the whole day as one timeline
+msg: Operator -> Platform: open the trace
+note: Platform: app + IdP, in order
+text: A human, a service, two agents, the IdP and the approval gate appear in one
+  list, sorted by time, with who acted for whom (lab 12).
+
+step: The operator decides that is enough, and cuts the first agent off
+msg: Operator -> Platform: cut off tidy-agent
+note: Platform: its tokens and chain dead
+text: The IdP stops honouring every token the agent holds or passed on, and its
+  unfinished work is ended. Its next request, to anything, is refused.
