@@ -20,198 +20,232 @@ through it before you fix it.
 - What a self-service endpoint owes you: never trusting a role the caller
   didn't earn
 
-## Closing the loop on lab 01
+??? note "Closing the loop on lab 01 (skip this if you finished it)"
 
-### The signature verification fix
+    ### The signature verification fix
 
-Lab 01 started you off with `verify_token` reading a JWT's claims but
-never checking whether the signature was genuine. The fix calls
-`jwt.decode` with the real secret and lets PyJWT do the cryptographic
-work. Lab 01's own handout already covers the full mechanics of the
-finished version, including a wrinkle worth reinforcing here since it's
-the whole reason the function is shaped the way it is: PyJWT's own expiry
-check runs inside that same verifying call, and it can raise for a
-malformed `exp` claim just as easily as for a forged signature. Letting
-that exception fall into the same "bad signature" handling would
-misreport a malformed `exp` as a forged token, exactly the conflation lab
-01 taught you to keep separate. Here's the full fixed function:
+    Lab 01 started you off with `verify_token` reading a JWT's claims but
+    never checking whether the signature was genuine. The fix calls
+    `jwt.decode` with the real secret and lets PyJWT do the cryptographic
+    work. Lab 01's own handout already covers the full mechanics of the
+    finished version, including a wrinkle worth reinforcing here since it's
+    the whole reason the function is shaped the way it is: PyJWT's own expiry
+    check runs inside that same verifying call, and it can raise for a
+    malformed `exp` claim just as easily as for a forged signature. Letting
+    that exception fall into the same "bad signature" handling would
+    misreport a malformed `exp` as a forged token, exactly the conflation lab
+    01 taught you to keep separate. Here's the full fixed function:
 
-```python title="solution/backend/app/security.py"
-def verify_token(token: str) -> TokenVerification:
-    """Check a JWT for real: signature, expiry, and required claims.
+    ```python title="solution/backend/app/security.py"
+    def verify_token(token: str) -> TokenVerification:
+        """Check a JWT for real: signature, expiry, and required claims.
 
-    Decoding the payload is always possible without the secret — that part
-    of a JWT is base64url, not encrypted. Proving the token wasn't tampered
-    with, and hasn't expired, needs the actual signature check below.
-    """
-    try:
-        unverified_claims = jwt.decode(token, options={"verify_signature": False})
-    except jwt.InvalidTokenError:
-        return TokenVerification(
-            valid=False, signature_valid=False, expired=False,
-            reason="token is not well-formed",
-        )
+        Decoding the payload is always possible without the secret — that part
+        of a JWT is base64url, not encrypted. Proving the token wasn't tampered
+        with, and hasn't expired, needs the actual signature check below.
+        """
+        try:
+            unverified_claims = jwt.decode(token, options={"verify_signature": False})
+        except jwt.InvalidTokenError:
+            return TokenVerification(
+                valid=False, signature_valid=False, expired=False,
+                reason="token is not well-formed",
+            )
 
-    now = time.time()
-    claimed_exp = unverified_claims.get("exp")
-    exp_present = "exp" in unverified_claims
-    exp_well_formed = isinstance(claimed_exp, (int, float))
-    expired = exp_well_formed and claimed_exp < now
+        now = time.time()
+        claimed_exp = unverified_claims.get("exp")
+        exp_present = "exp" in unverified_claims
+        exp_well_formed = isinstance(claimed_exp, (int, float))
+        expired = exp_well_formed and claimed_exp < now
 
-    try:
-        # verify_exp is turned off deliberately: this call's only job is
-        # checking the signature. PyJWT's own exp handling (left on) would
-        # try to int() a malformed exp claim and raise DecodeError — a
-        # subclass of InvalidTokenError indistinguishable, in the except
-        # branch below, from an actually-forged signature. A malformed exp
-        # is a real, distinct problem (handled right below), but it isn't a
-        # signature problem, and this function must not conflate the two.
-        jwt.decode(
-            token, JWT_SECRET, algorithms=[JWT_ALGORITHM],
-            options={"verify_exp": False},
-        )
-        signature_valid = True
-    except jwt.InvalidTokenError:
-        signature_valid = False
+        try:
+            # verify_exp is turned off deliberately: this call's only job is
+            # checking the signature. PyJWT's own exp handling (left on) would
+            # try to int() a malformed exp claim and raise DecodeError — a
+            # subclass of InvalidTokenError indistinguishable, in the except
+            # branch below, from an actually-forged signature. A malformed exp
+            # is a real, distinct problem (handled right below), but it isn't a
+            # signature problem, and this function must not conflate the two.
+            jwt.decode(
+                token, JWT_SECRET, algorithms=[JWT_ALGORITHM],
+                options={"verify_exp": False},
+            )
+            signature_valid = True
+        except jwt.InvalidTokenError:
+            signature_valid = False
 
-    if not signature_valid:
-        return TokenVerification(
-            valid=False, signature_valid=False, expired=expired,
-            claims=unverified_claims, reason="invalid signature",
-        )
+        if not signature_valid:
+            return TokenVerification(
+                valid=False, signature_valid=False, expired=expired,
+                claims=unverified_claims, reason="invalid signature",
+            )
 
-    if exp_present and not exp_well_formed:
-        return TokenVerification(
-            valid=False, signature_valid=True, expired=False,
-            claims=unverified_claims, reason="malformed exp claim",
-        )
+        if exp_present and not exp_well_formed:
+            return TokenVerification(
+                valid=False, signature_valid=True, expired=False,
+                claims=unverified_claims, reason="malformed exp claim",
+            )
 
-    if expired:
-        return TokenVerification(
-            valid=False, signature_valid=True, expired=True,
-            claims=unverified_claims, reason="token expired",
-        )
+        if expired:
+            return TokenVerification(
+                valid=False, signature_valid=True, expired=True,
+                claims=unverified_claims, reason="token expired",
+            )
 
-    missing = [claim for claim in REQUIRED_CLAIMS if claim not in unverified_claims]
-    if missing:
-        return TokenVerification(
-            valid=False, signature_valid=True, expired=False,
-            claims=unverified_claims, reason=f"missing required claim: {missing[0]}",
-        )
+        missing = [claim for claim in REQUIRED_CLAIMS if claim not in unverified_claims]
+        if missing:
+            return TokenVerification(
+                valid=False, signature_valid=True, expired=False,
+                claims=unverified_claims, reason=f"missing required claim: {missing[0]}",
+            )
 
-    return TokenVerification(valid=True, signature_valid=True, expired=False, claims=unverified_claims)
-```
+        return TokenVerification(valid=True, signature_valid=True, expired=False, claims=unverified_claims)
+    ```
 
-The `options={"verify_exp": False}` on the verifying call is doing the
-real work here. It tells PyJWT "check the signature, and nothing else" so
-the only way that call can raise is a genuine signature problem. Expiry
-and claim shape get decided separately, from the unverified claims the
-function already read at the top, on this function's own terms rather
-than PyJWT's. That split is what lets a malformed `exp` get reported
-honestly as `"malformed exp claim"` instead of getting blamed on a
-signature that was never at fault.
+    The `options={"verify_exp": False}` on the verifying call is doing the
+    real work here. It tells PyJWT "check the signature, and nothing else" so
+    the only way that call can raise is a genuine signature problem. Expiry
+    and claim shape get decided separately, from the unverified claims the
+    function already read at the top, on this function's own terms rather
+    than PyJWT's. That split is what lets a malformed `exp` get reported
+    honestly as `"malformed exp claim"` instead of getting blamed on a
+    signature that was never at fault.
 
-```mermaid
-flowchart TD
-    A[Receive token] --> B[Decode header + payload<br/>without checking the signature]
-    B --> C{well-formed base64url + JSON?}
-    C -->|no| D[reject: not well-formed]
-    C -->|yes| E["Check signature only<br/>(verify_exp disabled)"]
-    E -->|invalid| F[reject: invalid signature]
-    E -->|valid| G{exp present but not a number?}
-    G -->|yes| H[reject: malformed exp claim]
-    G -->|no| I{exp already in the past?}
-    I -->|yes| J[reject: token expired]
-    I -->|no| K{sub and exp both present?}
-    K -->|no| L[reject: missing required claim]
-    K -->|yes| M[accept: valid]
-```
+    ```mermaid
+    flowchart TD
+        A[Receive token] --> B[Decode header + payload<br/>without checking the signature]
+        B --> C{well-formed base64url + JSON?}
+        C -->|no| D[reject: not well-formed]
+        C -->|yes| E["Check signature only<br/>(verify_exp disabled)"]
+        E -->|invalid| F[reject: invalid signature]
+        E -->|valid| G{exp present but not a number?}
+        G -->|yes| H[reject: malformed exp claim]
+        G -->|no| I{exp already in the past?}
+        I -->|yes| J[reject: token expired]
+        I -->|no| K{sub and exp both present?}
+        K -->|no| L[reject: missing required claim]
+        K -->|yes| M[accept: valid]
+    ```
 
-Notice the signature check comes first and stands entirely on its own.
-Everything below it, expired, malformed, missing, is a judgment this
-function makes itself once it already knows the token is genuine. That
-separation of concerns, one check per failure mode, no exception handler
-doing double duty, is exactly what lab 01's background section spelled
-out. Seeing it play out in the finished function is confirmation the
-lesson landed, not a correction to it.
+    Notice the signature check comes first and stands entirely on its own.
+    Everything below it, expired, malformed, missing, is a judgment this
+    function makes itself once it already knows the token is genuine. That
+    separation of concerns, one check per failure mode, no exception handler
+    doing double duty, is exactly what lab 01's background section spelled
+    out. Seeing it play out in the finished function is confirmation the
+    lesson landed, not a correction to it.
 
-### Discussing lab 01's going further questions
+    ### Discussing lab 01's going further questions
 
-These aren't graded, and what follows is one take, not the only correct
-one.
+    These aren't graded, and what follows is one take, not the only correct
+    one.
 
-**JWT refresh for a client with no session cookie.** A mobile client that
-only ever holds the JWT has no `/token` endpoint it can hit again, because
-that endpoint requires the session cookie this lab's JWT is layered on
-top of. The usual fix is a second, longer-lived refresh token, opaque and
-stored server-side (much like lab 00's session id), that the client
-exchanges for a fresh short-lived JWT without re-entering a password. That
-refresh token needs its own revocation story, since it's the thing that
-now has to survive for days or weeks rather than the 15 minutes this
-lab's access token lives for.
+    **JWT refresh for a client with no session cookie.** A mobile client that
+    only ever holds the JWT has no `/token` endpoint it can hit again, because
+    that endpoint requires the session cookie this lab's JWT is layered on
+    top of. The usual fix is a second, longer-lived refresh token, opaque and
+    stored server-side (much like lab 00's session id), that the client
+    exchanges for a fresh short-lived JWT without re-entering a password. That
+    refresh token needs its own revocation story, since it's the thing that
+    now has to survive for days or weeks rather than the 15 minutes this
+    lab's access token lives for.
 
-**Revocation for something stateless.** The honest answer is that you
-can't revoke a JWT without giving up some of what made it attractive in
-the first place. The two real options are a denylist (a small,
-fast-to-check store of token IDs that shouldn't be trusted, checked on
-every verify) or just living with the token's TTL as the ceiling on how
-long a compromised token stays valid. A denylist reintroduces exactly the
-per-request state lookup a JWT was supposed to let you avoid, just for a
-narrower table. There's no way around that trade, only ways to make the
-lookup cheap.
+    **Revocation for something stateless.** The honest answer is that you
+    can't revoke a JWT without giving up some of what made it attractive in
+    the first place. The two real options are a denylist (a small,
+    fast-to-check store of token IDs that shouldn't be trusted, checked on
+    every verify) or just living with the token's TTL as the ceiling on how
+    long a compromised token stays valid. A denylist reintroduces exactly the
+    per-request state lookup a JWT was supposed to let you avoid, just for a
+    narrower table. There's no way around that trade, only ways to make the
+    lookup cheap.
 
-**Asymmetric keys for multi-service verification.** `JWT_SECRET` works
-here because issuing and verifying happen in the same process. The moment
-a second service needs to verify tokens it didn't issue, that service
-either needs the same shared secret (which means every service that can
-verify a token can also forge one) or the issuer switches to an
-asymmetric algorithm like RS256, publishes the public key, and keeps the
-private key to itself. Verification stays possible everywhere; forging a
-token stays possible in exactly one place. The cost is key management: now
-somebody has to rotate and distribute a public key, not just a string in
-an environment variable.
+    **Asymmetric keys for multi-service verification.** `JWT_SECRET` works
+    here because issuing and verifying happen in the same process. The moment
+    a second service needs to verify tokens it didn't issue, that service
+    either needs the same shared secret (which means every service that can
+    verify a token can also forge one) or the issuer switches to an
+    asymmetric algorithm like RS256, publishes the public key, and keeps the
+    private key to itself. Verification stays possible everywhere; forging a
+    token stays possible in exactly one place. The cost is key management: now
+    somebody has to rotate and distribute a public key, not just a string in
+    an environment variable.
 
-**Where a role claim would live.** This is the one this lab actually
-answers, though maybe not the way the question expects. `verify_token`
-never gained a role claim. RBAC in this lab reads the caller's role from
-the database, by way of the session, not from anything the JWT carries.
-That sidesteps the stale-claim problem entirely: change a user's role in
-the `users` table and the very next request sees it, no token to
-reissue. The cost shows up the moment a service has to authorize a caller
-using only a JWT, with no session lookup available, which is exactly the
-shape of problem later labs in this course build toward.
+    **Where a role claim would live.** This is the one this lab actually
+    answers, though maybe not the way the question expects. `verify_token`
+    never gained a role claim. RBAC in this lab reads the caller's role from
+    the database, by way of the session, not from anything the JWT carries.
+    That sidesteps the stale-claim problem entirely: change a user's role in
+    the `users` table and the very next request sees it, no token to
+    reissue. The cost shows up the moment a service has to authorize a caller
+    using only a JWT, with no session lookup available, which is exactly the
+    shape of problem later labs in this course build toward.
 
-## Background
-
-### From "who are you" to "what can you do"
+## A request through the role gate, one message at a time
 
 Everything through lab 01 answers one question: is this caller who they
 claim to be. RBAC answers a second, separate question: given that they
 are who they claim, are they allowed to do this specific thing. Sessions
 and JWTs are both authentication. A role check is authorization, and it
 has to run strictly after authentication succeeds, never instead of it.
+Step through one request to the admin-only route.
 
-```mermaid
-sequenceDiagram
-    participant B as Browser
-    participant S as Server
+<!-- stepper: flows/rbac-request.flow -->
+<div class="stepper" markdown>
 
-    B->>S: GET /admin/users (Cookie: session_id=...)
-    S->>S: get_current_session: does this session exist and is it live?
-    alt no valid session
-        S-->>B: 401
-    else session is valid
-        S->>S: get_current_user: look up the user row for this session
-        S->>S: role check: is user.role in the route's allowed_roles?
-        alt role not allowed
-            S->>S: audit log: deny, reason names required + actual role
-            S-->>B: 403
-        else role allowed
-            S->>S: audit log: allow
-            S-->>B: 200, the requested data
-        end
-    end
-```
+<figure class="stepper-diagram">
+<svg class="flow" viewBox="0 0 700 478" role="img" aria-label="Sequence diagram: Browser, Server, Audit log">
+<g class="actor"><rect x="45" y="8" width="110" height="34" rx="6"/><text x="100" y="30" text-anchor="middle">Browser</text></g>
+<g class="actor"><rect x="295" y="8" width="110" height="34" rx="6"/><text x="350" y="30" text-anchor="middle">Server</text></g>
+<g class="actor"><rect x="545" y="8" width="110" height="34" rx="6"/><text x="600" y="30" text-anchor="middle">Audit log</text></g>
+<line class="life" x1="100" y1="42" x2="100" y2="468"/>
+<line class="life" x1="350" y1="42" x2="350" y2="468"/>
+<line class="life" x1="600" y1="42" x2="600" y2="468"/>
+<g class="msg" id="m1"><line x1="100" y1="100" x2="341" y2="100"/><polygon points="350,100 341,95 341,105"/><text x="225" y="93" text-anchor="middle">1 GET /admin/users + cookie</text></g>
+<g class="secret" id="s2_1"><rect x="360" y="164" width="132" height="22"/><text x="426" y="179" text-anchor="middle">get_current_session</text></g>
+<g class="secret" id="s3_1"><rect x="360" y="222" width="204" height="22"/><text x="462" y="237" text-anchor="middle">reads role from the users table</text></g>
+<g class="secret" id="s4_1"><rect x="360" y="280" width="138" height="22"/><text x="429" y="295" text-anchor="middle">role_is_authorized()</text></g>
+<g class="msg" id="m5"><line x1="350" y1="332" x2="591" y2="332"/><polygon points="600,332 591,327 591,337"/><text x="475" y="325" text-anchor="middle">5 deny + both roles</text></g>
+<g class="msg" id="m6"><line x1="350" y1="390" x2="109" y2="390"/><polygon points="100,390 109,385 109,395"/><text x="225" y="383" text-anchor="middle">6 403 (or 200 + users)</text></g>
+</svg>
+</figure>
+
+<div class="step" data-title="A request arrives with a cookie" data-hl="m1" markdown>
+The route is admin-only, and the caller is whoever the cookie says
+they are. Nothing in the request says what role they hold, and nothing
+should.
+</div>
+
+<div class="step" data-title="First question: who is this?" data-hl="s2_1" markdown>
+No session, or an expired one, ends here with a 401. The server doesn't
+know who you are, so asking what you may do is premature.
+</div>
+
+<div class="step" data-title="The server looks up the caller&#x27;s role" data-hl="s3_1" markdown>
+The role comes from the database, never from the request. A caller
+can't give themselves a role by sending one. This is what lets a role
+change take effect on the very next request.
+</div>
+
+<div class="step" data-title="Second question: may this role do this?" data-hl="s4_1" markdown>
+The route lists the roles it admits. This one function decides whether
+the caller's role is good enough. It is the function you fix in this lab,
+and everything else in the diagram already works.
+</div>
+
+<div class="step" data-title="A denial is written down with its reason" data-hl="m5" markdown>
+The entry names the role the route required and the role the caller
+had. A bare 403 with no context is hard to investigate later.
+</div>
+
+<div class="step" data-title="The caller gets a 403, or the data" data-hl="m6" markdown>
+A caller with no valid session got a 401 at the second step. A caller
+with a valid session and the wrong role gets a 403 here: we know exactly
+who you are, and the answer is no.
+</div>
+
+</div>
+<!-- /stepper -->
 
 The 401-versus-403 distinction matters and this lab's tests check it
 directly. A missing or expired session is "I don't know who you are," and
@@ -219,34 +253,34 @@ gets 401. A session that's perfectly valid but belongs to the wrong role
 is "I know exactly who you are, and the answer is no," and gets 403. Two
 different failures, two different codes, two different audit reasons.
 
-### What the role check actually has to compare
+??? note "Background: what the role check actually has to compare"
 
-The naive way to write a role check is to ask "does this user have a
-role at all." Every signed-up user in this system gets the non-empty
-role `"user"` by default, so a check that only asks "is `role` truthy"
-passes for literally everyone, admin-only route or not. The check has to
-ask a narrower question: is this specific role one of the roles this
-specific route accepts.
+    The naive way to write a role check is to ask "does this user have a
+    role at all." Every signed-up user in this system gets the non-empty
+    role `"user"` by default, so a check that only asks "is `role` truthy"
+    passes for literally everyone, admin-only route or not. The check has to
+    ask a narrower question: is this specific role one of the roles this
+    specific route accepts.
 
-```mermaid
-flowchart LR
-    subgraph Buggy["Truthiness check"]
-        A1["role = 'user'"] --> A2{"if role:"}
-        A2 -->|non-empty, so yes| A3["allowed — wrong!"]
-    end
-    subgraph Fixed["Membership check"]
-        B1["role = 'user'"] --> B2{"if role in allowed_roles:"}
-        B2 -->|'user' not in ['admin']| B3["denied — correct"]
-    end
-```
+    ```mermaid
+    flowchart LR
+        subgraph Buggy["Truthiness check"]
+            A1["role = 'user'"] --> A2{"if role:"}
+            A2 -->|non-empty, so yes| A3["allowed — wrong!"]
+        end
+        subgraph Fixed["Membership check"]
+            B1["role = 'user'"] --> B2{"is this role one of the route's allowed roles?"}
+            B2 -->|"'user' is not 'admin'"| B3["denied — correct"]
+        end
+    ```
 
-This is a real category of bug, not a contrived one. It shows up whenever
-someone writes a role gate as "does the caller have some kind of
-authorization marker" instead of "does the caller have *this*
-authorization marker," and it's easy to miss in review because the
-buggy version still compiles, still runs, and still denies a caller with
-no role at all. It just fails to deny the much more common caller who has
-some role, only the wrong one.
+    This is a real category of bug, not a contrived one. It shows up whenever
+    someone writes a role gate as "does the caller have some kind of
+    authorization marker" instead of "does the caller have *this*
+    authorization marker," and it's easy to miss in review because the
+    buggy version still compiles, still runs, and still denies a caller with
+    no role at all. It just fails to deny the much more common caller who has
+    some role, only the wrong one.
 
 ## Prerequisites
 
@@ -347,7 +381,15 @@ npm run dev
 ```
 
 Sign up as a new user and log in. You'll see your role badge, `user`,
-next to your name. Click "Load all users" in the admin panel: with the
+next to your name.
+
+??? question "You are a plain `user`, and the admin panel is an admin-only route. With the starter as it is, what do you expect to happen when you click \"Load all users\"?"
+    It works. The starter's role check only asks whether you have a role at all,
+    and every signed-up user has one (`user`), so you are let in and see every
+    account, including the seeded admin. A 403 never happens, and the audit log
+    records an `allow`.
+
+Click "Load all users" in the admin panel: with the
 bug still in place, this succeeds, and you'll see every user in the
 system including the seeded admin account, despite never having admin
 access yourself. That's the escalation actually happening, not a

@@ -1,0 +1,36 @@
+actors: Browser | Server | Policy evaluator
+
+step: The caller asks for one specific note
+msg: Browser -> Server: GET /notes/42
+text: Unlike the admin panel, the answer depends on which note this is. A
+  role alone can't decide it.
+
+step: The server gathers both sides of the question
+note: Server: caller row + note's owner_id
+text: It needs the caller (id and role) and the resource (the note and who
+  owns it). Neither comes from anything the request supplied, apart from the
+  note's id.
+
+step: The evaluator walks its rules in order
+msg: Server -> Policy evaluator: evaluate(subject, note, read)
+text: Rules are checked top to bottom: `admin-full-access`, then
+  `owner-full-access`, then `default-deny`. The first one that matches
+  decides.
+
+step: The owner rule compares caller and note
+note: Policy evaluator: _is_owner()
+text: This is the relationship check, and the function you fix in this lab.
+  It has to compare the caller to the note, because that is the whole
+  difference between "your note" and "any note".
+
+step: The decision names the rule that fired
+msg: Policy evaluator -> Server: allow/deny + rule_id
+text: Every call returns something concrete, an outcome and the id of the
+  rule behind it. `default-deny` matches unconditionally at the end, so
+  there is never a "no answer".
+
+step: The rule id travels to the audit log and the browser
+msg: Server -> Browser: 200 or 403 + rule_id
+text: The same rule id is written to the audit log and returned to the
+  trace panel. When you test this lab, read the rule id first and the
+  status code second.

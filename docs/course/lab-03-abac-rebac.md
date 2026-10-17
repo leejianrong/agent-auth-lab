@@ -20,102 +20,100 @@ trace viewer that shows exactly which rule made the call.
 - How to keep a resource's owner from ever coming out of anything the
   caller supplies on the request
 
-## Closing the loop on lab 02
+??? note "Closing the loop on lab 02 (skip this if you finished it)"
 
-### The membership-check fix
+    ### The membership-check fix
 
-Lab 02 started `role_is_authorized` off checking `bool(role)`, which is
-true for every signed-up user because everyone gets the non-empty role
-`"user"` by default. The fix is one word different, comparing `role`
-against the actual allow-list instead of just checking it exists:
+    Lab 02 started `role_is_authorized` off checking `bool(role)`, which is
+    true for every signed-up user because everyone gets the non-empty role
+    `"user"` by default. The fix is one word different, comparing `role`
+    against the actual allow-list instead of just checking it exists:
 
-```python title="solution/backend/app/security.py"
-def role_is_authorized(role: str, allowed_roles: tuple[str, ...]) -> bool:
-    """Does `role` satisfy the RBAC check for a route that only admits one
-    of `allowed_roles`?
+    ```python title="solution/backend/app/security.py"
+    def role_is_authorized(role: str, allowed_roles: tuple[str, ...]) -> bool:
+        """Does `role` satisfy the RBAC check for a route that only admits one
+        of `allowed_roles`?
 
-    Kept as a standalone, dependency-free predicate — same reason
-    `verify_token` above is a plain function rather than living inline in a
-    FastAPI route — so it can be unit-tested directly, without spinning up
-    the app or a session.
-    """
-    return role in allowed_roles
-```
+        Kept as a standalone, dependency-free predicate — same reason
+        `verify_token` above is a plain function rather than living inline in a
+        FastAPI route — so it can be unit-tested directly, without spinning up
+        the app or a session.
+        """
+        return role in allowed_roles
+    ```
 
-The diagram is really about what changes underneath that one line, not the
-line itself. Here's the same request, `GET /admin/users` from a plain
-user, before and after:
+    The diagram is really about what changes underneath that one line, not the
+    line itself. Here's the same request, `GET /admin/users` from a plain
+    user, before and after:
 
-```mermaid
-sequenceDiagram
-    participant U as Plain user (role "user")
-    participant S as Server
+    ```mermaid
+    sequenceDiagram
+        participant U as Plain user (role "user")
+        participant S as Server
 
-    Note over U,S: Before the fix
-    U->>S: GET /admin/users
-    S->>S: role_is_authorized("user", ("admin",))<br/>→ bool("user") → True
-    S-->>U: 200, full user list (escalation)
+        Note over U,S: Before the fix
+        U->>S: GET /admin/users
+        S->>S: role_is_authorized("user", ("admin",))<br/>→ bool("user") → True
+        S-->>U: 200, full user list (escalation)
 
-    Note over U,S: After the fix
-    U->>S: GET /admin/users (same session, same role)
-    S->>S: role_is_authorized("user", ("admin",))<br/>→ "user" in ("admin",) → False
-    S->>S: audit log: deny, names both roles
-    S-->>U: 403
-```
+        Note over U,S: After the fix
+        U->>S: GET /admin/users (same session, same role)
+        S->>S: role_is_authorized("user", ("admin",))<br/>→ "user" in ("admin",) → False
+        S->>S: audit log: deny, names both roles
+        S-->>U: 403
+    ```
 
-Nothing about `require_role` or the route itself changed. The caller,
-their role, and the route's allow-list are all identical in both runs.
-The only thing that moved is what `role_is_authorized` actually compares,
-which is exactly why this bug is easy to miss in review: the buggy version
-still type-checks, still returns a bool, and still denies a caller with no
-role at all. It just can't tell "has a role" from "has the right one."
+    Nothing about `require_role` or the route itself changed. The caller,
+    their role, and the route's allow-list are all identical in both runs.
+    The only thing that moved is what `role_is_authorized` actually compares,
+    which is exactly why this bug is easy to miss in review: the buggy version
+    still type-checks, still returns a bool, and still denies a caller with no
+    role at all. It just can't tell "has a role" from "has the right one."
 
-### Discussing lab 02's going further questions
+    ### Discussing lab 02's going further questions
 
-One perspective, not a graded answer key.
+    One perspective, not a graded answer key.
 
-**Multiple roles per user.** The schema change is a join table,
-`user_roles(user_id, role)`, replacing the single `role` column. The more
-interesting change is in `role_is_authorized` itself: it stops taking one
-role and starts taking a collection, and the check becomes "does the
-intersection of the caller's roles and the route's allowed roles have
-anything in it." A caller who matches more than one allowed role doesn't
-need special handling here, since this is a plain allow-list, not a
-ranking. The moment two roles disagree about something, like one granting
-an action and another denying it, is the moment this stops being a simple
-allow-list and starts needing an explicit precedence rule, which this
-course doesn't build.
+    **Multiple roles per user.** The schema change is a join table,
+    `user_roles(user_id, role)`, replacing the single `role` column. The more
+    interesting change is in `role_is_authorized` itself: it stops taking one
+    role and starts taking a collection, and the check becomes "does the
+    intersection of the caller's roles and the route's allowed roles have
+    anything in it." A caller who matches more than one allowed role doesn't
+    need special handling here, since this is a plain allow-list, not a
+    ranking. The moment two roles disagree about something, like one granting
+    an action and another denying it, is the moment this stops being a simple
+    allow-list and starts needing an explicit precedence rule, which this
+    course doesn't build.
 
-**A role claim in the JWT.** You could add it, and services that only ever
-see a token, never a session, would need to. The cost is exactly the one
-lab 01 already flagged for revocation: a JWT claim is a snapshot from
-issue time, so a role change made in the `users` table after that doesn't
-take effect until the token expires and gets reissued. The 15-minute TTL
-this course already uses bounds how stale that snapshot can get, which is
-a real answer, just not a satisfying one if you need the change to apply
-immediately.
+    **A role claim in the JWT.** You could add it, and services that only ever
+    see a token, never a session, would need to. The cost is exactly the one
+    lab 01 already flagged for revocation: a JWT claim is a snapshot from
+    issue time, so a role change made in the `users` table after that doesn't
+    take effect until the token expires and gets reissued. The 15-minute TTL
+    this course already uses bounds how stale that snapshot can get, which is
+    a real answer, just not a satisfying one if you need the change to apply
+    immediately.
 
-**Fine-grained, per-resource checks.** This is the one this lab actually
-answers. `require_role` can only express "does this caller's role clear
-the bar for this whole route," and a check like "edit documents you
-created" needs to know something about the specific document, not just
-the caller. Whether "role" is still the right word for that: not really.
-It's a different kind of attribute (a relationship between a caller and
-one resource, not a caller's own property), and this lab treats it that
-way.
+    **Fine-grained, per-resource checks.** This is the one this lab actually
+    answers. `require_role` can only express "does this caller's role clear
+    the bar for this whole route," and a check like "edit documents you
+    created" needs to know something about the specific document, not just
+    the caller. Whether "role" is still the right word for that: not really.
+    It's a different kind of attribute (a relationship between a caller and
+    one resource, not a caller's own property), and this lab treats it that
+    way.
 
-**Reacting to repeated denials.** Nothing here currently does. Every
-denial gets an audit event with a trace id, which is enough to build a
-tally, an actor, and a count in a rolling window, from what already exists
-without adding a new code path. The system doesn't act on that tally yet;
-somebody would have to decide what "act" means (throttle, alert, lock the
-account) and build it, which stays out of scope for this course. It's
-worth noticing what it would need: the audit log already contains the
-signal, it just isn't watched.
+    **Reacting to repeated denials.** Nothing here currently does. Every
+    denial gets an audit event with a trace id, which is enough to build a
+    tally, an actor, and a count in a rolling window, from what already exists
+    without adding a new code path. The system doesn't act on that tally yet;
+    somebody would have to decide what "act" means (throttle, alert, lock the
+    account) and build it, which stays out of scope for this course. It's
+    worth noticing what it would need: the audit log already contains the
+    signal, it just isn't watched.
 
-## Background
-
-### One more question than RBAC can ask
+## A policy decision, one message at a time
 
 RBAC decides "does this role get in the door," once, for a whole route.
 That's the right shape when the answer really is the same for every
@@ -127,67 +125,111 @@ attributes of the resource, and the relationship between the caller and
 that resource, not just the caller's role. This lab's version needs
 exactly one relationship: is the caller the resource's owner.
 
-The two rules that matter here split cleanly along that line.
-`admin-full-access` is the ABAC case: it looks at one attribute of the
-subject, their role, and never touches the resource at all.
-`owner-full-access` is the ReBAC case: it can only be decided by comparing
-the caller to the specific resource in front of them, which is a
-relationship, not a property either side owns alone. It's stored as a
-plain `owner_id` column, so the code looks like an ordinary attribute
-comparison, `subject.id == resource.owner_id`, but what makes it
-relationship-based isn't the storage, it's that the answer changes
-depending on which two things you're comparing, not on anything you could
-read off the caller or the note in isolation.
+Step through a request to read one note and watch where the rule id comes from.
 
-### Rules as data, not a pile of ifs
+<!-- stepper: flows/policy-decision.flow -->
+<div class="stepper" markdown>
 
-ADR-0007 asks for a policy evaluator where a decision can point at the
-specific rule that produced it, by id. Writing that as nested
-`if`/`elif` gets you an allow or a deny, but not a name for the branch
-that ran. This lab's evaluator instead holds an ordered list of rule
-objects, each with an id, a description, and a condition function, and
-walks the list until one matches:
+<figure class="stepper-diagram">
+<svg class="flow" viewBox="0 0 700 478" role="img" aria-label="Sequence diagram: Browser, Server, Policy evaluator">
+<g class="actor"><rect x="45" y="8" width="110" height="34" rx="6"/><text x="100" y="30" text-anchor="middle">Browser</text></g>
+<g class="actor"><rect x="295" y="8" width="110" height="34" rx="6"/><text x="350" y="30" text-anchor="middle">Server</text></g>
+<g class="actor"><rect x="545" y="8" width="110" height="34" rx="6"/><text x="600" y="30" text-anchor="middle">Policy evaluator</text></g>
+<line class="life" x1="100" y1="42" x2="100" y2="468"/>
+<line class="life" x1="350" y1="42" x2="350" y2="468"/>
+<line class="life" x1="600" y1="42" x2="600" y2="468"/>
+<g class="msg" id="m1"><line x1="100" y1="100" x2="341" y2="100"/><polygon points="350,100 341,95 341,105"/><text x="225" y="93" text-anchor="middle">1 GET /notes/42</text></g>
+<g class="secret" id="s2_1"><rect x="360" y="164" width="186" height="22"/><text x="453" y="179" text-anchor="middle">caller row + note&#x27;s owner_id</text></g>
+<g class="msg" id="m3"><line x1="350" y1="216" x2="591" y2="216"/><polygon points="600,216 591,211 591,221"/><text x="475" y="209" text-anchor="middle">3 evaluate(subject, note, read)</text></g>
+<g class="secret" id="s4_1"><rect x="506" y="280" width="84" height="22"/><text x="548" y="295" text-anchor="middle">_is_owner()</text></g>
+<g class="msg" id="m5"><line x1="600" y1="332" x2="359" y2="332"/><polygon points="350,332 359,327 359,337"/><text x="475" y="325" text-anchor="middle">5 allow/deny + rule_id</text></g>
+<g class="msg" id="m6"><line x1="350" y1="390" x2="109" y2="390"/><polygon points="100,390 109,385 109,395"/><text x="225" y="383" text-anchor="middle">6 200 or 403 + rule_id</text></g>
+</svg>
+</figure>
 
-```mermaid
-flowchart TD
-    A["evaluate(subject, resource, action)"] --> B{"admin-full-access:<br/>subject.role == 'admin'?"}
-    B -->|yes| C["ALLOW — rule_id: admin-full-access"]
-    B -->|no| D{"owner-full-access:<br/>is subject the resource's owner?"}
-    D -->|yes| E["ALLOW — rule_id: owner-full-access"]
-    D -->|no| F["DENY — rule_id: default-deny"]
-```
+<div class="step" data-title="The caller asks for one specific note" data-hl="m1" markdown>
+Unlike the admin panel, the answer depends on which note this is. A
+role alone can't decide it.
+</div>
 
-`default-deny` sits at the end and matches unconditionally, so every call
-to `evaluate()` returns something concrete: an allow or a deny, and the id
-of whichever rule decided it. That last part is what the trace viewer
-actually shows, and what the audit log actually stores alongside the
-allow/deny outcome. Here's what a single request looks like end to end:
+<div class="step" data-title="The server gathers both sides of the question" data-hl="s2_1" markdown>
+It needs the caller (id and role) and the resource (the note and who
+owns it). Neither comes from anything the request supplied, apart from the
+note's id.
+</div>
 
-```mermaid
-sequenceDiagram
-    participant B as Browser
-    participant S as Server (FastAPI)
-    participant P as Policy evaluator
+<div class="step" data-title="The evaluator walks its rules in order" data-hl="m3" markdown>
+Rules are checked top to bottom: `admin-full-access`, then
+`owner-full-access`, then `default-deny`. The first one that matches
+decides.
+</div>
 
-    B->>S: GET /notes/42
-    S->>S: look up the caller and note 42's owner_id
-    S->>P: evaluate(subject, resource, "read")
-    P-->>S: PolicyDecision(allow, rule_id, rule_description)
-    S->>S: audit log: allow/deny, rule_id in metadata
-    alt allowed
-        S-->>B: 200 { allowed: true, rule_id, rule_description, note }
-    else denied
-        S-->>B: 403 { allowed: false, rule_id, rule_description }
-    end
-```
+<div class="step" data-title="The owner rule compares caller and note" data-hl="s4_1" markdown>
+This is the relationship check, and the function you fix in this lab.
+It has to compare the caller to the note, because that is the whole
+difference between "your note" and "any note".
+</div>
 
-One thing worth sitting with even though this lab's three rules don't hit
-it: rule order matters. A rule list is walked top to bottom and the first
-match wins, so a broad rule placed ahead of a narrow one can silently
-swallow every case the narrow rule was meant to handle. Nothing here
-triggers that today, since `admin-full-access` and `owner-full-access`
-don't overlap in who they match, but it's the kind of bug that gets easier
-to write, not harder, as a rule list grows.
+<div class="step" data-title="The decision names the rule that fired" data-hl="m5" markdown>
+Every call returns something concrete, an outcome and the id of the
+rule behind it. `default-deny` matches unconditionally at the end, so
+there is never a "no answer".
+</div>
+
+<div class="step" data-title="The rule id travels to the audit log and the browser" data-hl="m6" markdown>
+The same rule id is written to the audit log and returned to the
+trace panel. When you test this lab, read the rule id first and the
+status code second.
+</div>
+
+</div>
+<!-- /stepper -->
+
+??? note "Background: ABAC, ReBAC and rules as data"
+
+    The two rules that matter here split cleanly along that line.
+    `admin-full-access` is the ABAC case: it looks at one attribute of the
+    subject, their role, and never touches the resource at all.
+    `owner-full-access` is the ReBAC case: it can only be decided by comparing
+    the caller to the specific resource in front of them, which is a
+    relationship, not a property either side owns alone. It's stored as a
+    plain `owner_id` column, so the code looks like an ordinary attribute
+    comparison between two ids, but what makes it
+    relationship-based isn't the storage, it's that the answer changes
+    depending on which two things you're comparing, not on anything you could
+    read off the caller or the note in isolation.
+
+    ### Rules as data, not a pile of ifs
+
+    ADR-0007 asks for a policy evaluator where a decision can point at the
+    specific rule that produced it, by id. Writing that as nested
+    `if`/`elif` gets you an allow or a deny, but not a name for the branch
+    that ran. This lab's evaluator instead holds an ordered list of rule
+    objects, each with an id, a description, and a condition function, and
+    walks the list until one matches:
+
+    ```mermaid
+    flowchart TD
+        A["evaluate(subject, resource, action)"] --> B{"admin-full-access:<br/>subject.role == 'admin'?"}
+        B -->|yes| C["ALLOW — rule_id: admin-full-access"]
+        B -->|no| D{"owner-full-access:<br/>is subject the resource's owner?"}
+        D -->|yes| E["ALLOW — rule_id: owner-full-access"]
+        D -->|no| F["DENY — rule_id: default-deny"]
+    ```
+
+    `default-deny` sits at the end and matches unconditionally, so every call
+    to `evaluate()` returns something concrete: an allow or a deny, and the id
+    of whichever rule decided it. That last part is what the trace viewer
+    actually shows, and what the audit log actually stores alongside the
+    allow/deny outcome.
+
+    One thing worth sitting with even though this lab's three rules don't hit
+    it: rule order matters. A rule list is walked top to bottom and the first
+    match wins, so a broad rule placed ahead of a narrow one can silently
+    swallow every case the narrow rule was meant to handle. Nothing here
+    triggers that today, since `admin-full-access` and `owner-full-access`
+    don't overlap in who they match, but it's the kind of bug that gets easier
+    to write, not harder, as a rule list grows.
 
 ## Prerequisites
 
@@ -266,6 +308,12 @@ npm run dev
 
 Sign up as a new user and log in. Create a note in the "Notes and the
 policy-decision trace" panel, and note its id from the table underneath.
+??? question "A second account, with no relationship to your note, asks to read it by id. With the starter as it is, what do you expect to happen, and which rule do you expect the trace to name?"
+    It is allowed, and the trace names `owner-full-access`. The starter's owner
+    check compares the note's `owner_id` with itself, so it matches for every
+    signed-in caller, and the evaluator never gets as far as `default-deny`. The
+    rule id in the trace is the clue: read it before the status code.
+
 Type that id into "Try reading or updating any note by id," leave the
 action as "read," and attempt it: with the bug still in place this
 succeeds, and the trace names `owner-full-access` as the rule that fired,

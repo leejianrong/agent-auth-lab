@@ -1,0 +1,35 @@
+actors: Browser | Server | Audit log
+
+step: A request arrives with a cookie
+msg: Browser -> Server: GET /admin/users + cookie
+text: The route is admin-only, and the caller is whoever the cookie says
+  they are. Nothing in the request says what role they hold, and nothing
+  should.
+
+step: First question: who is this?
+note: Server: get_current_session
+text: No session, or an expired one, ends here with a 401. The server doesn't
+  know who you are, so asking what you may do is premature.
+
+step: The server looks up the caller's role
+note: Server: reads role from the users table
+text: The role comes from the database, never from the request. A caller
+  can't give themselves a role by sending one. This is what lets a role
+  change take effect on the very next request.
+
+step: Second question: may this role do this?
+note: Server: role_is_authorized()
+text: The route lists the roles it admits. This one function decides whether
+  the caller's role is good enough. It is the function you fix in this lab,
+  and everything else in the diagram already works.
+
+step: A denial is written down with its reason
+msg: Server -> Audit log: deny + both roles
+text: The entry names the role the route required and the role the caller
+  had. A bare 403 with no context is hard to investigate later.
+
+step: The caller gets a 403, or the data
+msg: Server -> Browser: 403 (or 200 + users)
+text: A caller with no valid session got a 401 at the second step. A caller
+  with a valid session and the wrong role gets a 403 here: we know exactly
+  who you are, and the answer is no.

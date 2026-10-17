@@ -1,0 +1,36 @@
+actors: Browser | Server | sessions table
+
+step: You send a username and password
+msg: Browser -> Server: POST /login
+text: The only time the password travels. Everything after this step rides on
+  the cookie instead.
+
+step: The server checks the password against its hash
+note: Server: verify_password()
+text: The server never compares the password you typed with a stored copy. It
+  hashes your attempt and compares the two hashes. This is the function you
+  fix in task 1.
+
+step: The server writes a session row
+msg: Server -> sessions table: INSERT id, user, expiry
+text: The row is the real session. It says which user the id belongs to and
+  when it stops being valid. The id comes from `resolve_login_session_id`,
+  the function you fix in task 2.
+
+step: The browser gets a cookie holding only the id
+msg: Server -> Browser: Set-Cookie: session_id
+text: The cookie is `HttpOnly`, so JavaScript on the page can't read it. It
+  holds an opaque id and nothing else. No name, no role, no expiry you could
+  trust.
+
+step: The browser sends it back by itself
+msg: Browser -> Server: GET /sessions/mine + cookie
+text: From now on the browser attaches the cookie to every request to this
+  site. You don't write any code for that. It is also why the cookie is
+  worth stealing: whoever presents it is treated as you.
+
+step: The server trusts the row, not the cookie
+msg: Server -> sessions table: SELECT by id
+text: A cookie that matches no row, or a row that has expired, gets a 401. The
+  session inspector in the app shows both sides of this step at once: an
+  empty `document.cookie` next to what the server holds.

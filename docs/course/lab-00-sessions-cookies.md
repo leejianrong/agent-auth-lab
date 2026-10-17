@@ -23,83 +23,41 @@ slowly.
 - How to read a structured audit log to see an authorization decision (allow
   or deny) as it happens, not just guess at it from a status code
 
-## Background
-
-### Sessions vs. the cookie
+## What a session is
 
 A cookie is just a string the browser sends back on every request to the
 domain that set it. On its own it proves nothing. The security comes from
 what's on the server: a session record that says "this opaque string
 corresponds to user 42, created at this time, expiring at that time." The
-cookie is a claim; the session record is the source of truth.
+cookie is a claim; the session record is the source of truth. The session
+inspector you'll meet in task 3 puts the two side by side.
 
-```mermaid
-sequenceDiagram
-    participant B as Browser
-    participant S as Server
-    participant DB as sessions table
 
-    B->>S: POST /login {username, password}
-    S->>S: verify password against stored hash
-    S->>DB: INSERT new session row (id, user_id, expires_at)
-    S-->>B: Set-Cookie: session_id=... (HttpOnly)
+??? note "Background: why hash passwords, and what session fixation is"
 
-    Note over B: JavaScript on the page can never read this cookie
+    ### Why hash passwords
 
-    B->>S: GET /sessions/mine (cookie sent automatically)
-    S->>DB: SELECT session by id
-    DB-->>S: session row
-    S-->>B: session details (id prefix, created_at, expires_at)
-```
+    If your database is ever read by someone who shouldn't read it (a backup
+    that leaks, a misconfigured bucket, a SQL injection bug somewhere else
+    entirely), a plaintext password column hands them every user's real password
+    immediately. A password hash is a one-way function: easy to compute forward,
+    practically impossible to reverse. You check a login attempt by hashing the
+    submitted password and comparing hashes, never by storing or comparing the
+    original.
 
-In this lab, `GET /sessions/mine` shows you both sides at once: the
-`document.cookie` value your own JavaScript sees (empty, since the cookie is
-`HttpOnly`), next to what the server actually holds for your session. Watch
-the difference for yourself once you're running it.
+    This lab uses [Argon2](https://en.wikipedia.org/wiki/Argon2), the winner of
+    the Password Hashing Competition and the current recommendation from OWASP.
+    Older systems you'll encounter in the wild often use bcrypt or PBKDF2
+    instead; the principle is identical even if the algorithm differs.
 
-### Why hash passwords
+    ### Session fixation
 
-If your database is ever read by someone who shouldn't read it (a backup
-that leaks, a misconfigured bucket, a SQL injection bug somewhere else
-entirely), a plaintext password column hands them every user's real password
-immediately. A password hash is a one-way function: easy to compute forward,
-practically impossible to reverse. You check a login attempt by hashing the
-submitted password and comparing hashes, never by storing or comparing the
-original.
-
-This lab uses [Argon2](https://en.wikipedia.org/wiki/Argon2), the winner of
-the Password Hashing Competition and the current recommendation from OWASP.
-Older systems you'll encounter in the wild often use bcrypt or PBKDF2
-instead; the principle is identical even if the algorithm differs.
-
-### Session fixation
-
-Here's the attack this lab makes you fix. Suppose login "elevates" whatever
-session the browser already presents, rather than issuing a fresh one:
-
-```mermaid
-sequenceDiagram
-    participant A as Attacker
-    participant V as Victim
-    participant S as Server (vulnerable)
-
-    A->>S: visit site, no login
-    S-->>A: Set-Cookie: session_id=FIXED123
-    A->>V: trick victim into using session_id=FIXED123<br/>(crafted link, shared subdomain, network MITM)
-    Note over V: victim's browser now holds FIXED123 too
-
-    V->>S: POST /login {username, password} (cookie: FIXED123)
-    Note over S: bug: server reuses FIXED123 instead of<br/>minting a new session id
-    S-->>V: FIXED123 is now authenticated as the victim
-
-    A->>S: GET /me (cookie: FIXED123)
-    S-->>A: 200 OK, authenticated as the victim
-```
-
-The attacker was never near the victim's password. They just needed their
-chosen session id to survive the victim's login. The fix is one rule:
-**login always issues a brand-new session id**, and never reuses whatever
-the client happened to send beforehand.
+    Suppose login "elevates" whatever session the browser already presents,
+    rather than issuing a fresh one. The attacker was never near the victim's
+    password. They just needed their chosen session id to survive the victim's
+    login. Task 2 walks through the attack one message at a time. The fix is one
+    rule: **login always issues a brand-new session id**, and never reuses
+    whatever the client happened to send beforehand.
 
 ## Prerequisites
 
@@ -155,6 +113,66 @@ directly, so `verify_password` needs to catch that.
 
 ### 2. Stop session fixation
 
+Here is the attack you're about to close. Step through it first: the attacker
+never learns the victim's password, and the whole thing turns on one decision
+the server makes in step 4.
+
+<!-- stepper: flows/session-fixation.flow -->
+<div class="stepper" markdown>
+
+<figure class="stepper-diagram">
+<svg class="flow" viewBox="0 0 700 420" role="img" aria-label="Sequence diagram: Attacker, Victim, Server">
+<g class="actor"><rect x="45" y="8" width="110" height="34" rx="6"/><text x="100" y="30" text-anchor="middle">Attacker</text></g>
+<g class="actor"><rect x="295" y="8" width="110" height="34" rx="6"/><text x="350" y="30" text-anchor="middle">Victim</text></g>
+<g class="actor"><rect x="545" y="8" width="110" height="34" rx="6"/><text x="600" y="30" text-anchor="middle">Server</text></g>
+<line class="life" x1="100" y1="42" x2="100" y2="410"/>
+<line class="life" x1="350" y1="42" x2="350" y2="410"/>
+<line class="life" x1="600" y1="42" x2="600" y2="410"/>
+<g class="msg" id="m1"><line x1="100" y1="100" x2="591" y2="100"/><polygon points="600,100 591,95 591,105"/><text x="350" y="93" text-anchor="middle">1 GET / (no login)</text></g>
+<g class="msg" id="m2"><line x1="100" y1="158" x2="341" y2="158"/><polygon points="350,158 341,153 341,163"/><text x="225" y="151" text-anchor="middle">2 link that sets FIXED123</text></g>
+<g class="msg" id="m3"><line x1="350" y1="216" x2="591" y2="216"/><polygon points="600,216 591,211 591,221"/><text x="475" y="209" text-anchor="middle">3 POST /login + FIXED123</text></g>
+<g class="secret" id="s4_1"><rect x="404" y="280" width="186" height="22"/><text x="497" y="295" text-anchor="middle">FIXED123 is now the victim&#x27;s</text></g>
+<g class="msg" id="m5"><line x1="100" y1="332" x2="591" y2="332"/><polygon points="600,332 591,327 591,337"/><text x="350" y="325" text-anchor="middle">5 GET /me + FIXED123</text></g>
+</svg>
+</figure>
+
+<div class="step" data-title="The attacker gets a session id of their own" data-hl="m1" markdown>
+The attacker visits the site without logging in and is handed a
+session id, `FIXED123`. Nothing about it is valuable yet, because nobody is
+logged in behind it.
+</div>
+
+<div class="step" data-title="The attacker plants that id in the victim&#x27;s browser" data-hl="m2" markdown>
+A crafted link, a cookie set from a sibling subdomain, or a hostile
+network can all do this. The attacker never touches the victim's password.
+</div>
+
+<div class="step" data-title="The victim logs in carrying the planted cookie" data-hl="m3" markdown>
+The victim types the right password. The server accepts it, and now has
+to decide which session id the login should be attached to.
+</div>
+
+<div class="step" data-title="A vulnerable server keeps the id it was given" data-hl="s4_1" markdown>
+This is the bug in the lab 00 starter. The server reuses the id the
+request came with, so the session the attacker already knows about turns
+into a logged-in one.
+</div>
+
+<div class="step" data-title="The attacker uses the id they already had" data-hl="m5" markdown>
+The server sees a valid, authenticated session and answers as the
+victim. The only thing that would have stopped this is a login that never
+reuses an id supplied from outside.
+</div>
+
+</div>
+<!-- /stepper -->
+
+??? question "The victim logs in with the right password, and the request carries the cookie `FIXED123`. Which session id does the starter's login hand back?"
+    `FIXED123`, the same one. The starter only mints a new id when the request
+    arrives with no cookie at all, so a cookie that was planted before login
+    survives it and becomes a logged-in session. That is why the attacker's last
+    request in the diagram works.
+
 Further down the same file, `resolve_login_session_id` looks like this:
 
 ```python title="starter/backend/app/security.py"
@@ -181,6 +199,68 @@ lines above and does exactly what its name says.
 
 ### 3. Run it and watch it work
 
+Before you start the app, step through a login once. The last two steps are
+exactly what the session inspector shows you.
+
+<!-- stepper: flows/login-session.flow -->
+<div class="stepper" markdown>
+
+<figure class="stepper-diagram">
+<svg class="flow" viewBox="0 0 700 478" role="img" aria-label="Sequence diagram: Browser, Server, sessions table">
+<g class="actor"><rect x="45" y="8" width="110" height="34" rx="6"/><text x="100" y="30" text-anchor="middle">Browser</text></g>
+<g class="actor"><rect x="295" y="8" width="110" height="34" rx="6"/><text x="350" y="30" text-anchor="middle">Server</text></g>
+<g class="actor"><rect x="545" y="8" width="110" height="34" rx="6"/><text x="600" y="30" text-anchor="middle">sessions table</text></g>
+<line class="life" x1="100" y1="42" x2="100" y2="468"/>
+<line class="life" x1="350" y1="42" x2="350" y2="468"/>
+<line class="life" x1="600" y1="42" x2="600" y2="468"/>
+<g class="msg" id="m1"><line x1="100" y1="100" x2="341" y2="100"/><polygon points="350,100 341,95 341,105"/><text x="225" y="93" text-anchor="middle">1 POST /login</text></g>
+<g class="secret" id="s2_1"><rect x="360" y="164" width="120" height="22"/><text x="420" y="179" text-anchor="middle">verify_password()</text></g>
+<g class="msg" id="m3"><line x1="350" y1="216" x2="591" y2="216"/><polygon points="600,216 591,211 591,221"/><text x="475" y="209" text-anchor="middle">3 INSERT id, user, expiry</text></g>
+<g class="msg" id="m4"><line x1="350" y1="274" x2="109" y2="274"/><polygon points="100,274 109,269 109,279"/><text x="225" y="267" text-anchor="middle">4 Set-Cookie: session_id</text></g>
+<g class="msg" id="m5"><line x1="100" y1="332" x2="341" y2="332"/><polygon points="350,332 341,327 341,337"/><text x="225" y="325" text-anchor="middle">5 GET /sessions/mine + cookie</text></g>
+<g class="msg" id="m6"><line x1="350" y1="390" x2="591" y2="390"/><polygon points="600,390 591,385 591,395"/><text x="475" y="383" text-anchor="middle">6 SELECT by id</text></g>
+</svg>
+</figure>
+
+<div class="step" data-title="You send a username and password" data-hl="m1" markdown>
+The only time the password travels. Everything after this step rides on
+the cookie instead.
+</div>
+
+<div class="step" data-title="The server checks the password against its hash" data-hl="s2_1" markdown>
+The server never compares the password you typed with a stored copy. It
+hashes your attempt and compares the two hashes. This is the function you
+fix in task 1.
+</div>
+
+<div class="step" data-title="The server writes a session row" data-hl="m3" markdown>
+The row is the real session. It says which user the id belongs to and
+when it stops being valid. The id comes from `resolve_login_session_id`,
+the function you fix in task 2.
+</div>
+
+<div class="step" data-title="The browser gets a cookie holding only the id" data-hl="m4" markdown>
+The cookie is `HttpOnly`, so JavaScript on the page can't read it. It
+holds an opaque id and nothing else. No name, no role, no expiry you could
+trust.
+</div>
+
+<div class="step" data-title="The browser sends it back by itself" data-hl="m5" markdown>
+From now on the browser attaches the cookie to every request to this
+site. You don't write any code for that. It is also why the cookie is
+worth stealing: whoever presents it is treated as you.
+</div>
+
+<div class="step" data-title="The server trusts the row, not the cookie" data-hl="m6" markdown>
+A cookie that matches no row, or a row that has expired, gets a 401. The
+session inspector in the app shows both sides of this step at once: an
+empty `document.cookie` next to what the server holds.
+</div>
+
+</div>
+<!-- /stepper -->
+
+
 Start the backend and frontend in two terminals:
 
 ```sh
@@ -194,10 +274,19 @@ npm run dev
 ```
 
 Open the frontend (Vite will print the local URL, normally
-`http://localhost:5173`). Sign up, log in, and look at the session inspector
+`http://localhost:5173`).
+
+??? question "After you log in, the session inspector shows two things side by side. What do you expect `document.cookie` to contain, and what do you expect the server to report?"
+    `document.cookie` is empty, because the session cookie is `HttpOnly` and the
+    page's JavaScript can't see it. The server side shows the first eight
+    characters of the session id, the creation time, the expiry and a
+    countdown, because it is the one holding the real session row. The cookie
+    is only a pointer to it.
+
+Sign up, log in, and look at the session inspector
 panel: it shows you `document.cookie` as your own JavaScript sees it next to
-what the server actually holds for your session, matching the first diagram
-above. Below that, the audit log panel updates live every time you log in,
+what the server actually holds for your session, matching the last two steps of the
+diagram above. Below that, the audit log panel updates live every time you log in,
 log out, or get denied.
 
 ## You're done when

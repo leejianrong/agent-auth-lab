@@ -1,0 +1,37 @@
+actors: Browser | Server
+
+step: The browser asks for a token, using its session
+msg: Browser -> Server: POST /token + session cookie
+text: The JWT in this lab sits on top of lab 00's session. You prove who you
+  are with the cookie, and the server turns that into a token.
+
+step: The server signs three chunks and sends them back
+msg: Server -> Browser: header.payload.signature
+note: Server: signs with JWT_SECRET
+text: The header and payload are plain JSON, base64url encoded. The signature
+  is computed over both with a key only the server holds. That key never
+  leaves the server.
+
+step: The browser reads the claims without asking anyone
+note: Browser: decodes locally
+text: Anyone can do this, with no secret at all. The decoder panel in the app
+  does exactly this. Reading a token tells you what it claims, and nothing
+  about whether to believe it.
+
+step: Someone edits the payload, or the signature
+note: Browser: one character changed
+text: A hand-edited token still decodes fine. The browser can't tell, and
+  doesn't need to, because it was never the one deciding.
+
+step: The server is asked to verify the token
+msg: Browser -> Server: POST /verify { token }
+text: Only the server can answer this, because only the server has the secret.
+
+step: The server rejects it for a specific reason
+msg: Server -> Browser: valid: false, "invalid signature"
+note: Server: recomputes the signature
+text: It recomputes the signature and compares. A mismatch is "invalid
+  signature". Expiry and missing claims have their own reasons, and the
+  signature has to be checked first because a forged token can claim any
+  `exp` it likes. The starter skips that check, which is the gap in this
+  lab.

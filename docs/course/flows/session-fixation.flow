@@ -1,0 +1,29 @@
+actors: Attacker | Victim | Server
+
+step: The attacker gets a session id of their own
+msg: Attacker -> Server: GET / (no login)
+text: The attacker visits the site without logging in and is handed a
+  session id, `FIXED123`. Nothing about it is valuable yet, because nobody is
+  logged in behind it.
+
+step: The attacker plants that id in the victim's browser
+msg: Attacker -> Victim: link that sets FIXED123
+text: A crafted link, a cookie set from a sibling subdomain, or a hostile
+  network can all do this. The attacker never touches the victim's password.
+
+step: The victim logs in carrying the planted cookie
+msg: Victim -> Server: POST /login + FIXED123
+text: The victim types the right password. The server accepts it, and now has
+  to decide which session id the login should be attached to.
+
+step: A vulnerable server keeps the id it was given
+note: Server: FIXED123 is now the victim's
+text: This is the bug in the lab 00 starter. The server reuses the id the
+  request came with, so the session the attacker already knows about turns
+  into a logged-in one.
+
+step: The attacker uses the id they already had
+msg: Attacker -> Server: GET /me + FIXED123
+text: The server sees a valid, authenticated session and answers as the
+  victim. The only thing that would have stopped this is a login that never
+  reuses an id supplied from outside.

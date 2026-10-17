@@ -19,206 +19,242 @@ what a JWT does and doesn't protect.
 - Why a session cookie and a JWT solve the same problem (proving who you
   are on a later request) with opposite trade-offs
 
-## Closing the loop on lab 00
+??? note "Closing the loop on lab 00 (skip this if you finished it)"
 
-### The password hashing fix
+    ### The password hashing fix
 
-Lab 00 started you off with `hash_password` and `verify_password` storing
-and comparing passwords as-is. The fix swaps in Argon2:
+    Lab 00 started you off with `hash_password` and `verify_password` storing
+    and comparing passwords as-is. The fix swaps in Argon2:
 
-```python title="solution/backend/app/security.py"
-def hash_password(password: str) -> str:
-    return _hasher.hash(password)
+    ```python title="solution/backend/app/security.py"
+    def hash_password(password: str) -> str:
+        return _hasher.hash(password)
 
 
-def verify_password(password: str, password_hash: str) -> bool:
-    try:
-        _hasher.verify(password_hash, password)
-        return True
-    except VerifyMismatchError:
-        return False
-```
+    def verify_password(password: str, password_hash: str) -> bool:
+        try:
+            _hasher.verify(password_hash, password)
+            return True
+        except VerifyMismatchError:
+            return False
+    ```
 
-`PasswordHasher.hash()` produces a string that encodes the algorithm,
-its parameters, a random salt, and the derived hash, all together, so two
-users with the same password never end up with the same stored value.
-`verify()` takes the stored hash and a plaintext guess and redoes the same
-derivation, comparing the result in constant time. It raises
-`VerifyMismatchError` on a mismatch instead of returning `False`, which is
-why `verify_password` needs the `try`/`except` rather than a plain
-`==` check.
+    `PasswordHasher.hash()` produces a string that encodes the algorithm,
+    its parameters, a random salt, and the derived hash, all together, so two
+    users with the same password never end up with the same stored value.
+    `verify()` takes the stored hash and a plaintext guess and redoes the same
+    derivation, comparing the result in constant time. It raises
+    `VerifyMismatchError` on a mismatch instead of returning `False`, which is
+    why `verify_password` needs the `try`/`except` rather than a plain
+    `==` check.
 
-```mermaid
-flowchart LR
-    A[POST /signup] --> B[hash_password]
-    B --> C[(users.password_hash)]
-    D[POST /login] --> E[verify_password]
-    C -.->|read stored hash| E
-    E -->|VerifyMismatchError| F[401, audit: deny]
-    E -->|hash matches| G[mint new session id]
-```
+    ```mermaid
+    flowchart LR
+        A[POST /signup] --> B[hash_password]
+        B --> C[(users.password_hash)]
+        D[POST /login] --> E[verify_password]
+        C -.->|read stored hash| E
+        E -->|VerifyMismatchError| F[401, audit: deny]
+        E -->|hash matches| G[mint new session id]
+    ```
 
-### The session fixation fix
+    ### The session fixation fix
 
-`resolve_login_session_id` used to reuse whatever session id the client
-already presented, which is what let an attacker plant a cookie in a
-victim's browser before they logged in and inherit their session
-afterward. The fix ignores that entirely:
+    `resolve_login_session_id` used to reuse whatever session id the client
+    already presented, which is what let an attacker plant a cookie in a
+    victim's browser before they logged in and inherit their session
+    afterward. The fix ignores that entirely:
 
-```python title="solution/backend/app/security.py"
-def resolve_login_session_id(cookie_session_id: str | None) -> str:
-    """What session id does a successful login issue?"""
-    return new_session_id()
-```
+    ```python title="solution/backend/app/security.py"
+    def resolve_login_session_id(cookie_session_id: str | None) -> str:
+        """What session id does a successful login issue?"""
+        return new_session_id()
+    ```
 
-The parameter is still there even though the function no longer looks at
-it. That's a side effect of how the starter is generated, not a design
-choice about this function specifically: `scripts/generate_starter.py`
-swaps the function *body* between the `LAB:SOLUTION` and `LAB:STARTER`
-blocks, but the `def` line itself is written once and shared by both. The
-starter's buggy body still reads `cookie_session_id`, so the signature has
-to keep accepting it, whether or not the fixed body above uses it.
+    The parameter is still there even though the function no longer looks at
+    it. That's a side effect of how the starter is generated, not a design
+    choice about this function specifically: `scripts/generate_starter.py`
+    swaps the function *body* between the `LAB:SOLUTION` and `LAB:STARTER`
+    blocks, but the `def` line itself is written once and shared by both. The
+    starter's buggy body still reads `cookie_session_id`, so the signature has
+    to keep accepting it, whether or not the fixed body above uses it.
 
-```mermaid
-sequenceDiagram
-    participant A as Attacker
-    participant V as Victim
-    participant S as Server (fixed)
+    ```mermaid
+    sequenceDiagram
+        participant A as Attacker
+        participant V as Victim
+        participant S as Server (fixed)
 
-    A->>S: visit site, no login
-    S-->>A: Set-Cookie: session_id=FIXED123
-    A->>V: trick victim into using session_id=FIXED123
-    V->>S: POST /login (cookie: FIXED123)
-    Note over S: resolve_login_session_id ignores FIXED123,<br/>mints a brand-new id instead
-    S-->>V: Set-Cookie: session_id=NEW456
-    A->>S: GET /me (cookie: FIXED123)
-    S-->>A: 401 — FIXED123 was never bound to a login
-```
+        A->>S: visit site, no login
+        S-->>A: Set-Cookie: session_id=FIXED123
+        A->>V: trick victim into using session_id=FIXED123
+        V->>S: POST /login (cookie: FIXED123)
+        Note over S: resolve_login_session_id ignores FIXED123,<br/>mints a brand-new id instead
+        S-->>V: Set-Cookie: session_id=NEW456
+        A->>S: GET /me (cookie: FIXED123)
+        S-->>A: 401 — FIXED123 was never bound to a login
+    ```
 
-### Discussing lab 00's going further questions
+    ### Discussing lab 00's going further questions
 
-These aren't graded, and what follows is one take, not the only correct
-one.
+    These aren't graded, and what follows is one take, not the only correct
+    one.
 
-**Hashing the session token at rest.** Right now, anyone who reads the
-`sessions` table directly gets a live, valid session id they can drop
-straight into a cookie: it's exactly as sensitive as a plaintext password
-would be, for the same reason. Store a hash of the session id (a fast one,
-like SHA-256, is fine here, since the id already has 256 bits of entropy
-and doesn't need Argon2's slow, salted design) and look sessions up by
-hashing the incoming cookie value and matching against the stored hash. The
-cookie itself is unaffected; only what a backup or an SQL injection bug
-would leak changes.
+    **Hashing the session token at rest.** Right now, anyone who reads the
+    `sessions` table directly gets a live, valid session id they can drop
+    straight into a cookie: it's exactly as sensitive as a plaintext password
+    would be, for the same reason. Store a hash of the session id (a fast one,
+    like SHA-256, is fine here, since the id already has 256 bits of entropy
+    and doesn't need Argon2's slow, salted design) and look sessions up by
+    hashing the incoming cookie value and matching against the stored hash. The
+    cookie itself is unaffected; only what a backup or an SQL injection bug
+    would leak changes.
 
-**Sliding expiration.** Extending the TTL on every authenticated request
-solves the "still active, don't log me out" problem, but it opens a new
-one: a stolen session, used regularly by the attacker, never expires
-either. Any sliding-expiration design needs a second, absolute ceiling
-(say, 12 hours from creation, no matter how active the session stays) that
-sliding renewal can't push past, otherwise "still active" and "compromised
-and being actively abused" look identical from the server's side.
+    **Sliding expiration.** Extending the TTL on every authenticated request
+    solves the "still active, don't log me out" problem, but it opens a new
+    one: a stolen session, used regularly by the attacker, never expires
+    either. Any sliding-expiration design needs a second, absolute ceiling
+    (say, 12 hours from creation, no matter how active the session stays) that
+    sliding renewal can't push past, otherwise "still active" and "compromised
+    and being actively abused" look identical from the server's side.
 
-**Per-device revocation.** The current schema has no concept of "device" at
-all, just a session row per login. Add a label (say, a hash of the
-`User-Agent` header plus a rough client fingerprint, captured at login) to
-each session row, list sessions grouped by that label in a "your devices"
-panel, and offer both a delete-one-row and a delete-all-rows-for-this-user
-endpoint. The interesting design question isn't the schema, it's how much
-you trust a `User-Agent` string as a device identity given how easy it is
-to spoof.
+    **Per-device revocation.** The current schema has no concept of "device" at
+    all, just a session row per login. Add a label (say, a hash of the
+    `User-Agent` header plus a rough client fingerprint, captured at login) to
+    each session row, list sessions grouped by that label in a "your devices"
+    panel, and offer both a delete-one-row and a delete-all-rows-for-this-user
+    endpoint. The interesting design question isn't the schema, it's how much
+    you trust a `User-Agent` string as a device identity given how easy it is
+    to spoof.
 
-**Per-context TTLs.** `SESSION_TTL_SECONDS` being a module constant means
-every session gets the same lifetime regardless of what it's for. The
-straightforward fix is moving the TTL from the constant into a column on
-the session row, decided by whatever calls `session_expiry()` at creation
-time rather than by the function itself. The harder question it raises:
-once TTL is a per-session decision, something has to decide it, which
-means introducing the concept of "what kind of session is this" before
-you've built anything that would tell you.
+    **Per-context TTLs.** `SESSION_TTL_SECONDS` being a module constant means
+    every session gets the same lifetime regardless of what it's for. The
+    straightforward fix is moving the TTL from the constant into a column on
+    the session row, decided by whatever calls `session_expiry()` at creation
+    time rather than by the function itself. The harder question it raises:
+    once TTL is a per-session decision, something has to decide it, which
+    means introducing the concept of "what kind of session is this" before
+    you've built anything that would tell you.
 
-## Background
+## Issue and verify, one message at a time
 
-### Signed, not encrypted
+A JWT looks like three base64url-encoded chunks joined with dots: a header,
+a payload, and a signature. The header and payload are just JSON. Nothing
+about them is encrypted, so anyone holding the token (your frontend, a
+browser extension, a proxy in the middle) can decode and read every claim
+without knowing any secret at all. That's not a bug. It's the whole design: a
+JWT is meant to be self-describing.
 
-A JWT looks like three base64url-encoded chunks joined with dots: a
-header, a payload, and a signature. The header and payload are just JSON.
-Nothing about them is encrypted, so anyone holding the token, your
-frontend, a browser extension, a proxy in the middle, can decode and read
-every claim without knowing any secret at all. That's not a bug. It's the
-whole design: a JWT is meant to be self-describing.
+What the secret buys you is the third chunk. The signature is computed over
+the header and payload using a key only the issuing server holds, and it's
+the only part that isn't attacker-editable without detection. Read the
+claims, and you know what the token *claims*. Check the signature, and you
+know whether to believe it. Step through a token's life and watch who can do
+what.
 
-What the secret actually buys you is the third chunk. The signature is
-computed over the header and payload using a key only the issuing server
-holds, and it's the only part that isn't attacker-editable without
-detection. Read the claims, and you know what the token *claims*. Check
-the signature, and you know whether to believe it.
+<!-- stepper: flows/jwt-issue-verify.flow -->
+<div class="stepper" markdown>
 
-```mermaid
-sequenceDiagram
-    participant B as Browser
-    participant S as Server
+<figure class="stepper-diagram">
+<svg class="flow" viewBox="0 0 700 478" role="img" aria-label="Sequence diagram: Browser, Server">
+<g class="actor"><rect x="45" y="8" width="110" height="34" rx="6"/><text x="100" y="30" text-anchor="middle">Browser</text></g>
+<g class="actor"><rect x="545" y="8" width="110" height="34" rx="6"/><text x="600" y="30" text-anchor="middle">Server</text></g>
+<line class="life" x1="100" y1="42" x2="100" y2="468"/>
+<line class="life" x1="600" y1="42" x2="600" y2="468"/>
+<g class="msg" id="m1"><line x1="100" y1="100" x2="591" y2="100"/><polygon points="600,100 591,95 591,105"/><text x="350" y="93" text-anchor="middle">1 POST /token + session cookie</text></g>
+<g class="msg" id="m2"><line x1="600" y1="158" x2="109" y2="158"/><polygon points="100,158 109,153 109,163"/><text x="350" y="151" text-anchor="middle">2 header.payload.signature</text></g>
+<g class="secret" id="s2_1"><rect x="446" y="164" width="144" height="22"/><text x="518" y="179" text-anchor="middle">signs with JWT_SECRET</text></g>
+<g class="secret" id="s3_1"><rect x="110" y="222" width="108" height="22"/><text x="164" y="237" text-anchor="middle">decodes locally</text></g>
+<g class="secret" id="s4_1"><rect x="110" y="280" width="144" height="22"/><text x="182" y="295" text-anchor="middle">one character changed</text></g>
+<g class="msg" id="m5"><line x1="100" y1="332" x2="591" y2="332"/><polygon points="600,332 591,327 591,337"/><text x="350" y="325" text-anchor="middle">5 POST /verify { token }</text></g>
+<g class="msg" id="m6"><line x1="600" y1="390" x2="109" y2="390"/><polygon points="100,390 109,385 109,395"/><text x="350" y="383" text-anchor="middle">6 valid: false, &quot;invalid signature&quot;</text></g>
+<g class="secret" id="s6_1"><rect x="428" y="396" width="162" height="22"/><text x="509" y="411" text-anchor="middle">recomputes the signature</text></g>
+</svg>
+</figure>
 
-    Note over B,S: Session cookie (lab 00) — stateful
-    B->>S: GET /me (Cookie: session_id=...)
-    S->>S: look up session_id in the sessions table
-    S-->>B: 200, or 401 if not found/expired
+<div class="step" data-title="The browser asks for a token, using its session" data-hl="m1" markdown>
+The JWT in this lab sits on top of lab 00's session. You prove who you
+are with the cookie, and the server turns that into a token.
+</div>
 
-    Note over B,S: JWT (lab 01) — stateless
-    B->>S: POST /token (Cookie: session_id=...)
-    S-->>B: { access_token: header.payload.signature }
-    Note over B: decode header + payload locally,<br/>no request needed
-    B->>S: POST /verify { token }
-    S->>S: check signature against JWT_SECRET,<br/>check exp, check required claims
-    S-->>B: { valid, signature_valid, expired, reason }
-```
+<div class="step" data-title="The server signs three chunks and sends them back" data-hl="m2 s2_1" markdown>
+The header and payload are plain JSON, base64url encoded. The signature
+is computed over both with a key only the server holds. That key never
+leaves the server.
+</div>
 
-Notice what changed between the two halves of that diagram. The session
-flow needs the database on every request, because the cookie is only an
-opaque reference. The JWT flow needs the database for nothing (it's
-already stateless), but it needs the one thing the browser never has: the
-key that made the signature genuine in the first place.
+<div class="step" data-title="The browser reads the claims without asking anyone" data-hl="s3_1" markdown>
+Anyone can do this, with no secret at all. The decoder panel in the app
+does exactly this. Reading a token tells you what it claims, and nothing
+about whether to believe it.
+</div>
 
-### What "verify" actually has to check
+<div class="step" data-title="Someone edits the payload, or the signature" data-hl="s4_1" markdown>
+A hand-edited token still decodes fine. The browser can't tell, and
+doesn't need to, because it was never the one deciding.
+</div>
 
-A JWT verification function that only decodes the payload and calls it
-done is the trap this lab exists to catch you in. A real verify has at
-least three independent ways to fail, and conflating them (or skipping any
-of them) is how "JWT auth" ends up meaning "anyone can forge a token by
-hand."
+<div class="step" data-title="The server is asked to verify the token" data-hl="m5" markdown>
+Only the server can answer this, because only the server has the secret.
+</div>
 
-```mermaid
-flowchart TD
-    A[Receive token] --> B[Decode header + payload<br/>without checking the signature]
-    B --> C{well-formed base64url + JSON?}
-    C -->|no| D[reject: not well-formed]
-    C -->|yes| E[Check signature against JWT_SECRET]
-    E -->|invalid| F[reject: invalid signature]
-    E -->|valid| L{exp present but not a number?}
-    L -->|yes| M[reject: malformed exp claim]
-    L -->|no| G{exp already in the past?}
-    G -->|yes| H[reject: token expired]
-    G -->|no| I{sub and exp both present?}
-    I -->|no| J[reject: missing required claim]
-    I -->|yes| K[accept: valid]
-```
+<div class="step" data-title="The server rejects it for a specific reason" data-hl="m6 s6_1" markdown>
+It recomputes the signature and compares. A mismatch is "invalid
+signature". Expiry and missing claims have their own reasons, and the
+signature has to be checked first because a forged token can claim any
+`exp` it likes. The starter skips that check, which is the gap in this
+lab.
+</div>
 
-The order matters. A signature check has to run before you trust anything
-else about the token, including whether it's expired, because a forged
-token can claim any `exp` it likes. This lab's self-check suite exercises
-each rejection path separately and expects a distinct reason string for
-each: `"invalid signature"`, `"malformed exp claim"`, `"token expired"`,
-and `"missing required claim: <name>"`. A verify function that collapses
-these into one generic "invalid token" makes debugging (and this handout's
-audit-log tests) much harder than it needs to be.
+</div>
+<!-- /stepper -->
 
-Watch out for a subtler trap in that ordering: a token can be genuinely
-signed with the real secret and still carry an `exp` that isn't a number
-at all (a hand-edited payload with `"exp": "soon"`, say). PyJWT's own
-built-in expiry check tries to convert `exp` to an integer during
-verification, and it raises an error if it can't, one that looks exactly
-like a signature failure to code that isn't careful about it. A malformed
-`exp` is a real problem, but it isn't a signature problem, and reporting
-it as `"invalid signature"` would blame the wrong thing.
+Notice what changed from lab 00. The session flow needs the database on every
+request, because the cookie is only an opaque reference. The JWT flow needs
+the database for nothing, but it needs the one thing the browser never has:
+the key that made the signature genuine in the first place.
+
+??? note "Background: what verify actually has to check"
+
+    A JWT verification function that only decodes the payload and calls it
+    done is the trap this lab exists to catch you in. A real verify has at
+    least three independent ways to fail, and conflating them (or skipping any
+    of them) is how "JWT auth" ends up meaning "anyone can forge a token by
+    hand."
+
+    ```mermaid
+    flowchart TD
+        A[Receive token] --> B[Decode header + payload<br/>without checking the signature]
+        B --> C{well-formed base64url + JSON?}
+        C -->|no| D[reject: not well-formed]
+        C -->|yes| E[Check signature against JWT_SECRET]
+        E -->|invalid| F[reject: invalid signature]
+        E -->|valid| L{exp present but not a number?}
+        L -->|yes| M[reject: malformed exp claim]
+        L -->|no| G{exp already in the past?}
+        G -->|yes| H[reject: token expired]
+        G -->|no| I{sub and exp both present?}
+        I -->|no| J[reject: missing required claim]
+        I -->|yes| K[accept: valid]
+    ```
+
+    The order matters. A signature check has to run before you trust anything
+    else about the token, including whether it's expired, because a forged
+    token can claim any `exp` it likes. This lab's self-check suite exercises
+    each rejection path separately and expects a distinct reason string for
+    each: `"invalid signature"`, `"malformed exp claim"`, `"token expired"`,
+    and `"missing required claim: <name>"`. A verify function that collapses
+    these into one generic "invalid token" makes debugging (and this handout's
+    audit-log tests) much harder than it needs to be.
+
+    Watch out for a subtler trap in that ordering: a token can be genuinely
+    signed with the real secret and still carry an `exp` that isn't a number
+    at all (a hand-edited payload with `"exp": "soon"`, say). PyJWT's own
+    built-in expiry check tries to convert `exp` to an integer during
+    verification, and it raises an error if it can't, one that looks exactly
+    like a signature failure to code that isn't careful about it. A malformed
+    `exp` is a real problem, but it isn't a signature problem, and reporting
+    it as `"invalid signature"` would blame the wrong thing.
 
 ## Prerequisites
 
@@ -322,10 +358,27 @@ then scroll to the "Live JWT decoder" panel. Click "Get a fresh
 token for my session": the claims decode instantly, client-side, no
 network call involved. Click "Verify signature & expiry with server," and
 you'll see a second, separate result that only the backend could produce.
-Then try pasting a token with a character changed in the signature part
-(the third dot-separated chunk) and verify it again: the local decode
-still works fine (that's the point), but the server verification now comes
-back invalid.
+
+Before you paste anything into the app, break one here first. The widget below
+signs a token with a throwaway secret, entirely in your browser. Your task: click
+"Attacker: set role to admin" and read the verdict. Then click "Sign it
+properly" to see what an accepted token looks like. Finally, change `exp` to
+`1` (a date in 1970) and leave the old signature alone. Which reason does the
+widget give, and why does it matter that the signature is checked before the
+expiry?
+
+<iframe class="widget-frame" src="../widgets/jwt-tamper.html" title="Interactive: tamper with a JWT" height="560" loading="lazy"></iframe>
+
+??? question "Paste the token back in with one character of the signature (the third dot-separated chunk) changed, then click verify. With the starter as it is, what do you expect the server to say?"
+    That it is valid. The starter hardcodes `signature_valid = True`, so a token
+    with a broken signature sails through as long as its claims look fine. The
+    local decode still works too, as it always will, because decoding needs no
+    secret. This is the bug you're fixing: nothing on the server has checked the
+    signature yet.
+
+Try it. Then fix `verify_token`, restart the backend and repeat the same
+paste: the local decode still works fine (that's the point), but the server
+verification now comes back invalid.
 
 ## You're done when
 
